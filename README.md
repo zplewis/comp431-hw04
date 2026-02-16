@@ -1,23 +1,25 @@
-# comp431-hw03
+# comp431-hw04 - Building an SMTP Client/Server System Using Sockets
+
+## Notes
+
+- sockets are the fundamental building block for client/server systems
+  - when you write to a socket, what you are writing is a message according to
+  some protocol
+  - sockets are created and managed applications and are analgous with files
+- two types of sockets are available via the socket API:
+  - UDP socket: unreliable, datagram-oriented communications; the message is not
+  tied to anything before or afterwards
+  - TCP sockets: reliable, stream-oriented communications
+    - reliable means that everything you push into the socket is guar
 
 ## Tasks
 
-- read a forward-file (having the format of the file you created in HW2) and
-convert the contents of the mail messages back to SMTP commands
-  - each SMTP message generated will be written to standard output
-- The program should both:
-  - generate SMTP server messages
-  - "listen" for the SMTP response messages that a real server would emit in
-to those messages
-- Since the program will not be communicating with a real SMTP server, the user
-will have to simulate the server by typing in the appropriate SMTP response
-message after each SMTP server message
-- There is a QUIT command which follows the same grammar as the "DATA" command.
-- the user will simulate providing the server response message
-  - all of your program's inputs should be read from standard input (stdin)
-- when parsing SMTP response messages, you should only parse for the response number and ignore
-whatever text is also sent with the response message
-- echo the entire SMTP response message you receive to standard error (stderr) and NOT standard input!
+- Implement the final portions of the SMTP protocol:
+  - the generation of the "greeting" message by the server upon receipt of a connection
+    - what should this be?
+  - the generation of the HELO message by the client in response to the server's greeting message
+- Replace your stdin/stdout I/O for SMTP messages with socket I/O
+- do some additional message processing and formatting in your SMTP client
 
 ## Definitions
 
@@ -32,6 +34,9 @@ language, like a programming language, specifying its syntax, not its meaning
 protocol
 - **parser** - processes a string and determines whether or not a string confirms
 to a grammar or not
+- **socket** - a host-local, application/created/released, OS-controlled
+interface into which an application process can both send and receive messages
+to/from another (remote or local) application process
 
 ## How email will work
 
@@ -88,6 +93,8 @@ combined.
 Terminals are "indivisible units of a language", or a token.
 
 ```text
+<helo-msg> ::= "HELO" <whitespace> <domain> <nullspace> <CRLF>
+<quit-cmd> ::= "QUIT" <nullspace> <CRLF>
 <response-code> ::= <resp-number> <whitespace> <arbitrary-text> <CRLF>
 <resp-number> ::= "250" | "354" | "500" | "501" | "503"
 <arbitrary-text> ::= any sequence of printable characters
