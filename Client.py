@@ -92,10 +92,51 @@ def main():
     # After the user has entered a valid email message, this program will create a TCP socket to the
     # SMTP server at the host and port number specified on the command line.
     # Once the TCP socket has been created, forward the user's message to the server using the
-    # SMTP protocol.5
+    # SMTP protocol.
 
+    # Four new operations:
 
+    # 1. When your program connects to the server ,it must be prepared to
+    # receive a correct greeting message. Your program will do nothing with the
+    # greeting message other than receive it and confirm that it is a valid
+    # greeting message (220 hostname.cs.unc.edu)
+    # 1a. If the greeting message is not a valid greeting message, you should
+    # print a 1-line error message to stdout and then terminate the program.
+    # 1b. If the greeting message is valid, you should reply to the greeting
+    # with the SMTP HELO message using the format from the non-terminal. It
+    # will look like "HELO client-hostname.cs.unc.edu", where that is a
+    # hostname of the server the client program is running on.
 
+    # 2. It looks like you send the SMTP commands in order like before, MAIL
+    # FROM, RCPT TO, DATA. This time, within the DATA message, you include
+    # "From:", "To:", "Subject:", each on their own lines. After the "Subject:"
+    # line, have a blank line before the start of the body of the email message.
+    # When you send the message, the email addresses in "From:" and
+    # "To:" should be wrapped in angle brackets (<>)
+    # The message would include the data_end_cmd, which is a line with just
+    # a period. The next line would be just "QUIT" for the quit command.
+    # 2a. Note that the forward files are now named by domain and not email address
+    # on the server.
+    # 2b. What is added to the forward files on the server comes from the body
+    # of the DATA message, not from the MAIL FROM and RCPT TO messages. For now,
+    # don't worry about making them match unless the homework says to make sure
+    # that they do.
+
+    # 3. Your program will close its connection to the server, print to stdout
+    # a meaningful 1-line error message, and terminate when:
+    # end-of-file is reached
+    # outgoing mail message has been successfully sent
+    # when any SMTP or socket error is encountered
+    # any SMTP protocol errors
+    # errors opening the socket
+    # keyboard quitting, like before
+
+    # 4. When your client emits the QUIT message (which I imagine only happens
+    # when sending SMTP messages to the server), the client has to wait and
+    # expect the server's final 221 "connection closed" response. Do NOT
+    # terminate until after receiving this message.
+    # 4a. If the wrong message is given, I suppose you print a 1-line error
+    # to standard out and terminate the client application.
 
 if __name__ == "__main__":
     main()

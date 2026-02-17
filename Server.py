@@ -214,7 +214,7 @@ class SMTPServer:
 
             with forward_path.open("a", encoding="utf-8") as f:
                 f.write(email_complete_text)
-                
+
 def get_command_line_arguments():
     """
     Handles command line arguments for the forward file and debug mode.
@@ -248,9 +248,9 @@ def main():
     """
 	Docstring for main
 	"""
-    
-	# TODO: 
-    
+
+
+
 	# TODO: What port should be used to create the socket to accept incoming requests?
 	serverSocket = socket()
 
