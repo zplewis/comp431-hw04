@@ -241,6 +241,24 @@ class Parser:
         end_index = self.input_string.find(">", start_index)
         return self.input_string[start_index:end_index].strip()
 
+    def get_email_domain(self) -> str:
+        """
+        Extracts and returns the domain from the email address in the input
+        string.
+        """
+
+        email_address = self.get_email_address()
+
+        if not email_address or '@' not in email_address or '.' not in email_address:
+            return ""
+
+        parts = email_address.split('@')
+
+        if not parts or len(parts) != 2:
+            return ""
+
+        return parts[1]
+
 
     def get_address_line_for_email(self, string_literal: str) -> str:
         """

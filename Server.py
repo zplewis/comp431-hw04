@@ -246,7 +246,8 @@ def get_command_line_arguments():
 
 def get_hostname() -> str:
     """
-    Returns the hostname of the server this code is running on.
+    Returns the hostname of the server this code is running on. This works on
+    the cs.unc.edu server even though this just prints "Mac" as my hostname.
     """
 
     try:
@@ -261,8 +262,31 @@ def main():
     This code starts here.
     """
 
-    # Print the hostname
-    print(f"220 {get_hostname()}")
+    # TODO: Print the hostname, delete this
+    # print(f"220 {get_hostname()}")
+
+    # 1. Upon starting this program, create a socket and wait for a connection.
+    # By simply accepting a connection from a client, the SMTP server will send
+    # a 220 hostname.cs.unc.edu message to the SMTP client.
+
+    # 2. In response to the 220 message, expect an SMTP HELO message that must
+    # be formatted correctly.
+
+    # 3. When you receive the HELO message, read the domain from the SMTP HELO
+    # message and send a 250 back with the following format:
+    # 250 Hello client-domain pleased to meet you.
+
+    # 4. Now enter the "email message processing loop", which means that you
+    # begin processing SMTP messages until the QUIT message is received.
+    # 4a. I suppose the same error messages would be generated, just now, they
+    # will be sent to the client.
+
+    # 5. Concerning the forward files, it may be easier to collect the
+    # individual domains from the "RCPT TO" commands. Additionally, you add
+    # only a single copy of the email to the forward file per domain, even if
+    # that domain has multiple recipients. Just in case they are checking for
+    # the existence of forward files, only create them once the entire message
+    # has been created. You would be appending the message to the forward file.
 
 
 
