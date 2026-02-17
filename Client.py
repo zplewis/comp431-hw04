@@ -71,6 +71,9 @@ def main():
     #
     # Make sure there is at least 1 valid email address
     # Make sure all email addresses are valid
+    # there should be optional whitespace after the comma (using the same
+    # definition as <nullspace>, meaning 0 or more spaces)
+    # The non-terminal <mailbox> matches the email addresses.
     print("To:")
     email_to_addresses = sys.stdin.readline()
 
@@ -80,7 +83,16 @@ def main():
     # Assume users will terminate their message text by entering a period on an otherwise blank
     # line (data_end_cmd)
     print("Message:")
-    email_body = sys.stdin.readline()
+    email_body = ""
+    email_line = ""
+    while email_line != ".\n":
+        email_line = sys.stdin.readline()
+        email_body += email_line
+
+    # After the user has entered a valid email message, this program will create a TCP socket to the
+    # SMTP server at the host and port number specified on the command line.
+    # Once the TCP socket has been created, forward the user's message to the server using the
+    # SMTP protocol.5
 
 
 

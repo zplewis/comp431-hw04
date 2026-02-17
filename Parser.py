@@ -725,6 +725,41 @@ class Parser:
         """
         return self.is_path()
 
+    def mailboxes(self) -> bool:
+        """
+        The function that handles the custom <mailboxes> non-terminal, which is:
+        <mailboxes> ::= <mailbox> | <mailbox> "," <nullspace> <mailboxes>
+
+        This is modeled after how <domain> works, recursively checking for
+        <mailbox> in a comma-separated list.
+        """
+
+        start = self.position
+
+        if not self.mailbox():
+            self.rewind(start)
+            return False
+
+        start = self.position
+
+        # Update the start position because we have a <mailbox>!
+        if not self.match_chars(","):
+            # Since there is no comma, rewind and stop here.
+            self.rewind(start)
+            return True
+
+        # Since there is a comma, see if there is <nullspace> AND another
+        # <mailbox>. If not, rewind again and return False. We are rewinding to
+        # before the comma since the comma by itself is not enough for the
+        # "right-side" of the "or" operator in the <mailboxes> non-terminal.
+        # Calling this checks for another <nullspace> <mailboxes> after the
+        # comma.
+        if not (self.nullspace() and self.mailboxes()):
+            self.rewind(start)
+            return False
+
+        return True
+
     def domain(self) -> bool:
         """
         The function that handles the <domain> non-terminal, which is:
@@ -841,11 +876,7 @@ class Parser:
 
     def is_path(self) -> bool:
         """
-        Docstring for is_path
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
+        Matches <user@domain.com>.
         """
 
         start = self.position
@@ -867,10 +898,6 @@ class Parser:
         """
         Function for <mailbox>. Is allowed to generate errors under the error detection rule
         defined in HW1 writeup.
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
         """
 
         start = self.position
@@ -892,10 +919,6 @@ class Parser:
     def local_part(self) -> bool:
         """
         Seems to be an alias for <string>.
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
         """
 
         return self.is_string()
