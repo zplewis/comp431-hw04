@@ -10,7 +10,7 @@ Port number for your server is 800 + the last 4 digits of your PID.
 import argparse
 import socket
 from pathlib import Path
-from Parser import Parser, ParserError, bscolors
+from Parser import Parser, ParserError, bcolors
 
 class SMTPServer:
     """
@@ -244,15 +244,30 @@ def get_command_line_arguments():
 
     return arg_parser.parse_args()
 
+def get_hostname() -> str:
+    """
+    Returns the hostname of the server this code is running on.
+    """
+
+    try:
+        return socket.gethostname()
+    except:
+        return ""
+
+
+
 def main():
     """
-	Docstring for main
-	"""
+    This code starts here.
+    """
+
+    # Print the hostname
+    print(f"220 {get_hostname()}")
 
 
 
-	# TODO: What port should be used to create the socket to accept incoming requests?
-	serverSocket = socket()
+    # TODO: What port should be used to create the socket to accept incoming requests?
+    # serverSocket = socket()
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ Client.py
 
 import argparse
 import sys
+from Parser import Parser, ParserError, bcolors
 
 def get_command_line_arguments():
     """
