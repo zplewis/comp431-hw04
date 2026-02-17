@@ -279,7 +279,7 @@ def main():
     # 4. Now enter the "email message processing loop", which means that you
     # begin processing SMTP messages until the QUIT message is received.
     # 4a. I suppose the same error messages would be generated, just now, they
-    # will be sent to the client.
+    # will be sent to the client. They would NOT be printed to stdout.
 
     # 5. Concerning the forward files, it may be easier to collect the
     # individual domains from the "RCPT TO" commands. Additionally, you add
