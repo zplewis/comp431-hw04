@@ -8,7 +8,8 @@ Client.py
 
 import argparse
 import sys
-from Parser import Parser, ParserError, bcolors
+from Parser import Parser, ParserError, debugging
+from socket import *
 
 def get_command_line_arguments():
     """
@@ -57,6 +58,57 @@ def main():
     Docstring for main
     """
 
+    # Get debug_mode, hostname, and port_number
+    args = get_command_line_arguments()
+    debug_mode = args.debug
+    server_name = args.hostname
+    # 8000 + 4956 = 12956
+    server_port = args.port_number
+
+    clientSocket = socket(AF_INET, SOCK_STREAM)
+
+    try:
+
+        # 1. When your program connects to the server, it must be prepared to
+        # receive a correct greeting message. Your program will do nothing with the
+        # greeting message other than receive it and confirm that it is a valid
+        # greeting message (220 hostname.cs.unc.edu)
+        # 1a. If the greeting message is not a valid greeting message, you should
+        # print a 1-line error message to stdout and then terminate the program.
+        # 1b. If the greeting message is valid, you should reply to the greeting
+        # with the SMTP HELO message using the format from the non-terminal. It
+        # will look like "HELO client-hostname.cs.unc.edu", where that is a
+        # hostname of the server the client program is running on.
+
+        clientSocket.connect((server_name, server_port))
+
+        clientSocket.close()
+
+    except EOFError:
+        # Ctrl+D (Unix) or end-of-file from a pipe
+        # break
+        pass
+    except KeyboardInterrupt:
+        # Ctrl+C
+        # break
+        pass
+    except ParserError as pe:
+        # All errors that should be handled according to the writeup are handled as ParserError
+        # objects. All other exceptions are ValueError or some other type. If a ParserError
+        # occurrs, the write up says "upon receipt of any erroneous SMTP message you should
+        # reset your state machine and return to the state of waiting for a valid MAIL FROM
+        # message".
+        # TODO: This must change!
+        print(pe)
+        # server.reset()
+        # continue
+    except Exception as e:
+        # print(f"An unexpected error occurred: {e}")
+        # break
+        pass
+
+    clientSocket.close()
+
     # Print a "From:" prompt message (terminated with a newline)
     print("From:")
     email_from_address = sys.stdin.readline()
@@ -97,7 +149,7 @@ def main():
 
     # Four new operations:
 
-    # 1. When your program connects to the server ,it must be prepared to
+    # 1. When your program connects to the server, it must be prepared to
     # receive a correct greeting message. Your program will do nothing with the
     # greeting message other than receive it and confirm that it is a valid
     # greeting message (220 hostname.cs.unc.edu)

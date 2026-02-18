@@ -8,9 +8,10 @@ Port number for your server is 800 + the last 4 digits of your PID.
 """
 
 import argparse
-import socket
+from socket import *
+from socket import SHUT_RDWR
 from pathlib import Path
-from Parser import Parser, ParserError, bcolors
+from Parser import Parser, ParserError, debugging
 
 class SMTPServer:
     """
@@ -255,7 +256,30 @@ def get_hostname() -> str:
     except:
         return ""
 
+def socket_is_connected(socket_obj: socket) -> bool:
+    """
+    Docstring for socket_is_connected
 
+    :return: Description
+    :rtype: bool
+    """
+
+    if not socket_obj:
+        return False
+
+    try:
+
+        if not isinstance(socket_obj, (socket.socket, socket.SocketType)):
+            return False
+
+        print(f"getsockname(): {socket.getsockname()}")
+
+        return True
+
+    except Exception as e:
+        return False
+
+    return True
 
 def main():
     """
@@ -264,6 +288,97 @@ def main():
 
     # TODO: Print the hostname, delete this
     # print(f"220 {get_hostname()}")
+
+    args = get_command_line_arguments()
+    debug_mode = args.debug
+    server_port = args.port_number
+
+    # debugging.print(debug_mode, "whatever")
+
+    # https://docs.python.org/3.12/library/socket.html#socket.AF_INET
+    # https://docs.python.org/3.12/library/socket.html#socket.SOCK_STREAM
+    # SOCK_STREAM represents a socket type, one of the two the official documentation lists as
+    # useful
+    serverSocket = socket(family=AF_INET, type=SOCK_STREAM)
+
+    # debugging.print(debug_mode, "whatever")
+
+    # print(f"getpeername(): {serverSocket.getpeername()}")
+
+
+    connectionSocket = None
+    addr = None
+
+    try:
+
+        debugging.print(debug_mode, "whatever")
+
+        serverSocket.bind('', server_port)
+
+        debugging.print(debug_mode, "called serverSocket.bind()")
+
+        # https://docs.python.org/3.12/library/socket.html#socket.socket.listen
+        # The parameter specifies the number of unaccepted connections that the system will allow
+        # before refusing new connections. This can help prevent multiple sockets and issues.
+        serverSocket.listen(1)
+
+        debugging.print(debug_mode, "called serverSocket.listen(1)...")
+
+        while True:
+            # TODO: What is "addr" for?
+            # .accept() returns a tuple where the first element is a socket object
+            # the second element is a return address
+            # What is the difference between connectionSocket and serverSocket? It seems that
+            # connectionSocket represents an actual socket object when the client connects and is
+            # spawned from the serverSocket object.
+            connectionSocket, addr = serverSocket.accept()
+
+            debugging.print(debug_mode, "called serverSocket.accept(). Maybe the code will listen?")
+
+            sentence = connectionSocket.recv(1024).decode()
+
+            capitalizedSentence = sentence.upper()
+
+            connectionSocket.send(capitalizedSentence.encode())
+
+            # Note: close() releases the resource associated with a connection but does not
+            # necessarily close the connection immediately. If you want to close the connection in a
+            # timely fashion, call shutdown() before close().
+
+
+    except EOFError as e:
+        # Ctrl+D (Unix) or end-of-file from a pipe
+        # break
+        debugging.print(debug_mode, f"EOFError: {e}")
+    except KeyboardInterrupt as e:
+        # Ctrl+C
+        # break
+        debugging.print(debug_mode, f"KeyboardInterrupt (error): {e}")
+    except ParserError as pe:
+        # All errors that should be handled according to the writeup are handled as ParserError
+        # objects. All other exceptions are ValueError or some other type. If a ParserError
+        # occurrs, the write up says "upon receipt of any erroneous SMTP message you should
+        # reset your state machine and return to the state of waiting for a valid MAIL FROM
+        # message".
+        debugging.print(debug_mode, f"ParserError: {e}")
+    except OSError as e:
+        # This can be useful for catching errors related to sockets
+        debugging.print(debug_mode, f"OSError: {e}")
+    except Exception as e:
+        # print(f"An unexpected error occurred: {e}")
+        # break
+        debugging.print(debug_mode, f"General Exception: {e}")
+
+    if connectionSocket:
+        # https://docs.python.org/3.12/library/socket.html#socket.SHUT_RDWR
+        connectionSocket.shutdown(SHUT_RDWR)
+        connectionSocket.close()
+
+    if serverSocket:
+        # TODO: How can you tell if a socket is connected? socket.getpeername()? socket.getsockname()?
+        if socket_is_connected(serverSocket):
+            serverSocket.shutdown(SHUT_RDWR)
+        serverSocket.close()
 
     # 1. Upon starting this program, create a socket and wait for a connection.
     # By simply accepting a connection from a client, the SMTP server will send
@@ -280,6 +395,8 @@ def main():
     # begin processing SMTP messages until the QUIT message is received.
     # 4a. I suppose the same error messages would be generated, just now, they
     # will be sent to the client. They would NOT be printed to stdout.
+    # 4b. If debug_mode = True, then print messages to stdout. Otherwise, DO NOT PRINT the 500+
+    # error messages to standard out!
 
     # 5. Concerning the forward files, it may be easier to collect the
     # individual domains from the "RCPT TO" commands. Additionally, you add
@@ -291,7 +408,6 @@ def main():
 
 
     # TODO: What port should be used to create the socket to accept incoming requests?
-    # serverSocket = socket()
 
 if __name__ == "__main__":
     main()

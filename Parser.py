@@ -2,7 +2,9 @@
 # Posted by joeld, modified by community. See post 'Timeline' for change history
 # Retrieved 2026-02-08, License - CC BY-SA 4.0
 
-class bcolors:
+import sys
+
+class debugging:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -12,6 +14,17 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+    def print(debug_mode: bool, text: str):
+        if not debug_mode:
+            return
+
+        # Apparently, print() was printing an extra line
+        if debug_mode:
+            text = f"{debugging.FAIL}{text}{debugging.ENDC}"
+
+        sys.stdout.write(text + "\n")
+        sys.stdout.flush()
 
 
 class ParserError(Exception):
