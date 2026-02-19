@@ -2,9 +2,117 @@
 # Posted by joeld, modified by community. See post 'Timeline' for change history
 # Retrieved 2026-02-08, License - CC BY-SA 4.0
 
+import socket
 import sys
 
-class debugging:
+def socket_is_connected(connection_socket: socket.socket = None, debug_mode: bool = False) -> bool:
+    """
+    Docstring for socket_is_connected
+
+    :param connection_socket: Description
+    :type connection_socket: socket
+    :return: Description
+    :rtype: bool
+    """
+
+    if not connection_socket or connection_socket is None:
+        DebugMode.print(debug_mode, "socket_is_connected(); connection_socket is empty")
+        return False
+
+    try:
+
+        DebugMode.print(debug_mode, f"getpeername(): {connection_socket.getpeername()}", DebugMode.SUCCESS)
+
+        return True
+
+    except Exception as e:
+        DebugMode.print(debug_mode, f"socket_is_connected(); exception occurred: {e}", DebugMode.ERROR)
+        return False
+
+def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debug_mode: bool = False) -> bool:
+    """
+    Docstring for socket_send_msg
+
+    :param connection_socket: Description
+    :type connection_socket: socket
+    :param msg: Description
+    :type msg: str
+    :param debug_mode: Description
+    :type debug_mode: bool
+    :return: Description
+    :rtype: bool
+    """
+
+    if not connection_socket:
+        DebugMode.print(debug_mode, "socket_send_msg(); connection_socket variable was invalid")
+        return False
+
+    if not msg:
+        DebugMode.print(debug_mode, "socket_send_msg(); msg string variable was invalid")
+        return False
+
+    if not socket_is_connected(connection_socket, debug_mode):
+        DebugMode.print(debug_mode, "socket_send_msg(); connection_socket is NOT connected")
+        return False
+
+    try:
+
+        DebugMode.print(debug_mode, f"About to send message: '{msg}'", DebugMode.INFO)
+        connection_socket.sendall(msg.encode())
+        DebugMode.print(debug_mode, f"Sent message successfully.", DebugMode.SUCCESS)
+
+    except OSError as e:
+        DebugMode.print(debug_mode, e, DebugMode.ERROR)
+    except Exception as e:
+        DebugMode.print(debug_mode, e, DebugMode.ERROR)
+
+    return False
+
+def get_hostname(debug_mode: bool = False) -> str:
+        """
+        Returns the hostname of the server this code is running on. This works on
+        the cs.unc.edu server even though this just prints "Mac" as my hostname.
+        """
+
+        try:
+
+            return socket.gethostname()
+
+        except Exception as e:
+            DebugMode.print(debug_mode, f"get_hostname(); failed to get hostname: {e}", DebugMode.ERROR)
+            return ""
+
+def close_socket(connection_socket: socket.socket = None, debug_mode: bool = False) -> bool:
+    """
+    Docstring for close_socket
+
+    :param connection_socket: Description
+    :type connection_socket: socket.socket
+    :return: Description
+    :rtype: bool
+    """
+
+    try:
+
+        if connection_socket is None:
+            return False
+
+        if not socket_is_connected(connection_socket, debug_mode):
+            connection_socket.close()
+            return True
+
+        connection_socket.shutdown()
+        connection_socket.close()
+
+        return True
+
+    except Exception as e:
+        connection_socket = None
+        DebugMode.print(debug_mode, f"close_socket(); exception occurred: {e}")
+
+    return False
+
+class DebugMode():
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -15,13 +123,39 @@ class debugging:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-    def print(debug_mode: bool, text: str):
+    INFO = 0 # Cyan
+    WARN = 1 # YELLOW
+    ERROR = 2 # Red
+    SUCCESS = 3 # Green
+
+    def get_color_from_type(log_type: int = 0) -> str:
+        """
+        Docstring for get_color_from_type
+        """
+
+        if log_type == DebugMode.INFO:
+            return DebugMode.OKCYAN
+
+        if log_type == DebugMode.WARN:
+            return DebugMode.WARNING
+
+        if log_type == DebugMode.ERROR:
+            return DebugMode.FAIL
+
+        if log_type == DebugMode.SUCCESS:
+            return DebugMode.OKGREEN
+
+        return DebugMode.ENDC
+
+    def print(debug_mode: bool, text: str, log_type: int = 0):
         if not debug_mode:
             return
 
+        start_color = DebugMode.get_color_from_type(log_type)
+
         # Apparently, print() was printing an extra line
         if debug_mode:
-            text = f"{debugging.FAIL}{text}{debugging.ENDC}"
+            text = f"{start_color}{text}{DebugMode.ENDC}"
 
         sys.stdout.write(text + "\n")
         sys.stdout.flush()
@@ -40,6 +174,7 @@ class ParserError(Exception):
     501 error message is generated.
     """
 
+    SERVER_GREETING = 220
     COMMAND_UNRECOGNIZED = 500
     SYNTAX_ERROR_IN_PARAMETERS = 501
     BAD_SEQUENCE_OF_COMMANDS = 503
@@ -239,6 +374,9 @@ class Parser:
         #     print(f"original: {self.input_string}")
         #     print(f"sliced: {self.input_string[:-1]}")
 
+        if not self.input_string or self.input_string is None:
+            return ""
+
         if not self.input_string.endswith("\n"):
             return self.input_string
 
@@ -253,6 +391,17 @@ class Parser:
         start_index = self.input_string.find("<") + 1
         end_index = self.input_string.find(">", start_index)
         return self.input_string[start_index:end_index].strip()
+
+    def get_email_addresses(self) -> list:
+        """
+        For use with the <mailboxes> non-terminal, this returns a list of email addresses that
+        have passed the production rule.
+        """
+
+        if not self.input_string:
+            return []
+
+        return self.input_string.split(',')
 
     def get_email_domain(self) -> str:
         """
@@ -272,6 +421,15 @@ class Parser:
 
         return parts[1]
 
+    def get_domain_from_helo(self) -> str:
+        """
+        Extracts and returns the domain from the HELO msg.
+        """
+
+        if not self.command_parsed or self.command_name != "HELO":
+            return ""
+
+        return self.input_string.replace("HELO", "").strip()
 
     def get_address_line_for_email(self, string_literal: str) -> str:
         """
@@ -432,6 +590,22 @@ class Parser:
         if not check_only:
             raise ParserError(error_no)
         return False
+
+    def match_helo_msg(self) -> bool:
+        """
+        This is the non-terminal for the HELO message.
+
+        <helo-msg> ::= "HELO" <whitespace> <domain> <nullspace> <CRLF>
+        """
+
+        if self.match_chars("HELO"):
+            self.set_command_identified("HELO")
+
+        if not (self.whitespace() and self.domain() and self.nullspace() and self.crlf()):
+            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+
+        self.set_command_parsed()
+        return True
 
     def mail_from_cmd(self, check_only: bool = False) -> bool:
         """
@@ -809,7 +983,6 @@ class Parser:
 
         if not self.match_chars("."):
             # Since there is no period, rewind and stop here
-            # print("Domain period not found, rewinding")
             self.rewind(start)
             return True
 
@@ -959,10 +1132,6 @@ class Parser:
         """
         Function for the <string> non-terminal. This seems to mean
         "one or more <char> characters".
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
         """
 
         start = self.position
@@ -979,10 +1148,6 @@ class Parser:
         """
         Returns True if the current character is any ASCII character except
         those in <special> or those in <sp>.
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
         """
 
         start = self.position
