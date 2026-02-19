@@ -97,7 +97,9 @@ class SMTPServer:
         DebugMode.print(self.debug_mode, f"evaluate_state(server): state: {self.state}")
 
         if self.state == self.EXPECTING_CONNECTION:
-            socket_send_msg(self.connection_socket, f"220 {socket.gethostname()}", self.debug_mode)
+            if not socket_send_msg(self.connection_socket, f"220 {socket.gethostname()}", self.debug_mode):
+                print("Failed to send initial 220 message to client upon establishing a connection.")
+                return self.reset()
             return self.advance()
 
         if self.state == self.EXPECTING_HELO:
@@ -105,8 +107,10 @@ class SMTPServer:
                 raise ParserError(ParserError.COMMAND_UNRECOGNIZED)
 
             client_domain = self.parser.get_domain_from_helo()
-            socket_send_msg(self.connection_socket, f"250 Hello {client_domain} pleased to meet you.", self.debug_mode)
-            return self.advance()
+            if not socket_send_msg(self.connection_socket, f"250 Hello {client_domain} pleased to meet you.", self.debug_mode):
+                print('Failed to send 250 Hello message to client. Closing connection.')
+                close_socket(self.connection_socket)
+            return self.reset()
 
         # We need to know if any command is recognized to be ready for 503 errors
         # We do not check for errors until after the SMTP "speaks" first.
@@ -369,7 +373,7 @@ def main():
 
         try:
 
-            DebugMode.print(debug_mode, "whatever")
+            DebugMode.print(debug_mode, "about to call .bind() to create the server_socket...")
 
             # https://docs.python.org/3.12/library/socket.html#socket.socket.bind
             # This takes one parameter that is a 2-element tuple
@@ -399,8 +403,8 @@ def main():
 
                 with connection_socket:
 
-                    if debug_mode:
-                        connection_socket.settimeout(4.0)
+                    # if debug_mode:
+                    #     connection_socket.settimeout(4.0)
 
                     DebugMode.print(debug_mode, f"socket_server.accept() received a new connection. addr: {addr}")
 
@@ -418,7 +422,8 @@ def main():
 
                     try:
 
-                        while True:
+                        # This might be better than while True
+                        while socket_is_connected(connection_socket):
 
                             # https://docs.python.org/3.12/library/socket.html#socket.socket.recv
                             # The parameter is the maximum amount of data to be received at once
@@ -437,24 +442,27 @@ def main():
                                 break
 
                             # Reaching this point means we have data from the client
-                            sentence = connection_socket.recv(bufsize).decode()
+                            sentence = bytes_recv.decode()
 
                             parser = Parser(sentence, debug_mode)
                             smtp_server.set_parser(parser)
                             smtp_server.set_socket(connection_socket)
                             smtp_server.evaluate_state()
 
-                            # Note: close() releases the resource associated with a connection but does not
-                            # necessarily close the connection immediately. If you want to close the connection in a
-                            # timely fashion, call shutdown() before close().
 
+
+                    # break is not needed in any of the exceptions because to reach the exceptions
+                    # means that the loop is already broken. A new connection would have to be
+                    # established anyway.
                     except EOFError as e:
                         # Ctrl+D (Unix) or end-of-file from a pipe
-                        # break
+                        close_socket(connection_socket)
+                        print(e)
                         DebugMode.print(debug_mode, f"EOFError: {e}", DebugMode.ERROR)
                     except KeyboardInterrupt as e:
                         # Ctrl+C
-                        # break
+                        close_socket(connection_socket)
+                        print(e)
                         DebugMode.print(debug_mode, f"KeyboardInterrupt (error): {e}", DebugMode.ERROR)
                     except ParserError as e:
                         # All errors that should be handled according to the writeup are handled as ParserError
@@ -462,23 +470,25 @@ def main():
                         # occurrs, the write up says "upon receipt of any erroneous SMTP message you should
                         # reset your state machine and return to the state of waiting for a valid MAIL FROM
                         # message".
+
+                        socket_send_msg(connection_socket, e)
+                        close_socket(connection_socket)
                         DebugMode.print(debug_mode, f"ParserError: {e}", DebugMode.ERROR)
                     except OSError as e:
                         # This can be useful for catching errors related to sockets
+                        close_socket(connection_socket)
+                        print(e)
                         DebugMode.print(debug_mode, f"OSError: {e}", DebugMode.ERROR)
                     except Exception as e:
                         # print(f"An unexpected error occurred: {e}")
-                        # break
+                        close_socket(connection_socket)
+                        print(e)
                         DebugMode.print(debug_mode, f"General Exception (connection_socket): {e}", DebugMode.ERROR)
 
-                    if connection_socket:
-                        # https://docs.python.org/3.12/library/socket.html#socket.SHUT_RDWR
-                        connection_socket.shutdown(socket.SHUT_RDWR)
-                        connection_socket.close()
+                    # attempt to shut down the connection socket anyway just in case
+                    close_socket(connection_socket)
+                    smtp_server.reset()
 
-                    return
-
-            DebugMode.print(debug_mode, "about to close server socket and shutting down SMTP server...", DebugMode.WARN)
 
         except EOFError as e:
             # Ctrl+D (Unix) or end-of-file from a pipe
@@ -503,10 +513,10 @@ def main():
             # break
             DebugMode.print(debug_mode, f"General Exception (server_socket): {e}", DebugMode.ERROR)
 
-        if server_socket:
-            # TODO: How can you tell if a socket is connected? socket.getpeername()? socket.getsockname()?
-            if socket_is_connected(server_socket):
-                server_socket.close()
+        # Attempt to close the server socket just in case
+        close_socket(server_socket)
+        smtp_server.reset()
+
 
         # 1. Upon starting this program, create a socket and wait for a connection.
         # By simply accepting a connection from a client, the SMTP server will send

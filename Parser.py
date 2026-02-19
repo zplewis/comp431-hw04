@@ -76,7 +76,8 @@ def get_hostname(debug_mode: bool = False) -> str:
 
         try:
 
-            return socket.gethostname()
+            return socket.getfqdn()
+            # return socket.gethostname()
 
         except Exception as e:
             DebugMode.print(debug_mode, f"get_hostname(); failed to get hostname: {e}", DebugMode.ERROR)
@@ -101,7 +102,10 @@ def close_socket(connection_socket: socket.socket = None, debug_mode: bool = Fal
             connection_socket.close()
             return True
 
-        connection_socket.shutdown()
+        # Note: close() releases the resource associated with a connection but does not
+        # necessarily close the connection immediately. If you want to close the connection in a
+        # timely fashion, call shutdown() before close().
+        connection_socket.shutdown(socket.SHUT_RDWR)
         connection_socket.close()
 
         return True
@@ -630,7 +634,7 @@ class Parser:
 
         # If we reach here, the line was successfully parsed
         self.set_command_parsed()
-        return self.print_success()
+        return True
 
     def rcpt_to_cmd(self, check_only: bool = False) -> bool:
         """
@@ -654,7 +658,7 @@ class Parser:
 
         # If we reach here, the line was successfully parsed
         self.set_command_parsed()
-        return self.print_success()
+        return True
 
     def word_only_commands(self, cmd_name: str, check_only: bool = False) -> bool:
         """
@@ -688,10 +692,6 @@ class Parser:
         # If we reach here, the line was successfully parsed
         self.set_command_parsed()
 
-        if cmd_name == "DATA":
-            return self.print_success(354)
-
-        # TODO: See what you need to print, if anything, for QUIT.
         return True
 
     def quit_cmd(self, check_only: bool = False) -> bool:
@@ -769,7 +769,7 @@ class Parser:
                 self.rewind(start)
                 return False
 
-            return self.print_success()
+            return True
 
         # If we are not at the beginning of a new line, then we need to check for
         # <CRLF> "." <CRLF> from the current position.
@@ -777,7 +777,7 @@ class Parser:
             self.rewind(start)
             return False
 
-        return self.print_success()
+        return True
 
     def is_ascii(self, char: str) -> bool:
         """

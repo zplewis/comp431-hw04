@@ -86,12 +86,6 @@ class SMTPClientSide:
     def set_socket(self, connection_socket: socket.socket):
         """
         Docstring for set_socket
-
-        :param self: Description
-        :param connection_socket: Description
-        :type connection_socket: socket
-        :return: Description
-        :rtype: Any
         """
         if not socket_is_connected(connection_socket, self.debug_mode):
             raise ValueError("client connection_socket must be an instance of the socket class.")
@@ -230,11 +224,13 @@ class SMTPClientSide:
             line = sys.stdin.readline()
             temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
             while not (temp_parser.data_end_cmd()):
-                self.forward_file_lines.append(line)
+                self.forward_file_lines.append(temp_parser.get_input_line())
+                DebugMode.print(self.debug_mode, line)
                 line = sys.stdin.readline()
                 temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
 
-            self.forward_file_lines.append(line)
+            self.forward_file_lines.append(temp_parser.get_input_line())
+            DebugMode.print(self.debug_mode, temp_parser.get_input_line())
 
             # Returning True here should allow the main loop to continue and create a socket to
             # connect to the SMTP server
@@ -244,17 +240,22 @@ class SMTPClientSide:
         if self.state == self.EXPECTING_SERVER_GREETING:
             if not (self.parser.match_response_code and self.parser.get_smtp_response_code() == '220'):
                 print('Invalid greeting message from SMTP Server. Terminating program.')
+                DebugMode.print(self.debug_mode, f"invalid greeting message received: {self.parser.get_input_line()}", DebugMode.WARN)
                 close_socket(self.connection_socket, self.debug_mode)
                 sys.exit(1)
 
-            if socket_send_msg(self.connection_socket, f"HELO {get_hostname(self.connection_socket)}", self.debug_mode):
-                self.advance()
+            if not socket_send_msg(self.connection_socket, f"HELO {get_hostname(self.connection_socket)}", self.debug_mode):
+                print('Failed to send HELO msg to SMTP server. Terminating program.')
+                close_socket(self.connection_socket, self.debug_mode)
+                sys.exit(1)
 
+            self.advance()
             return True
 
         if self.state == self.EXPECTING_SERVER_HELLO:
-            if not self.parser.match_helo_msg():
+            if not (self.parser.match_response_code and self.parser.get_smtp_response_code() == '250'):
                 print("Invalid Hello message from SMTP server. Terminating program.")
+                DebugMode.print(self.debug_mode, f"invalid hello message from SMTP server: '{self.parser.get_input_line()}", DebugMode.WARN)
                 close_socket(self.connection_socket, self.debug_mode)
                 sys.exit(1)
 
@@ -418,6 +419,7 @@ class SMTPClientSide:
         self.parser = None
         self.cmd_to_send_to_server = ""
         self.input_line = ""
+        self.forward_file_lines_index = 0
         self.forward_file_lines = []
 
         self.data_to_address_line = ""
@@ -429,12 +431,12 @@ class SMTPClientSide:
         then it starts over and waits for the next one.
         """
 
-        next_state = self.EXPECTING_SERVER_GREETING if self.state == self.EXPECTING_DATA_END else self.state + 1
+        next_state = self.EXPECTING_USER_MAIL_FROM_ADDRESS if self.state == self.EXPECTING_QUIT_RESPONSE else self.state + 1
 
         self.debug_print(f"advancing state from {self.state} to {next_state}")
 
         self.state = next_state
-        if (next_state == self.EXPECTING_SERVER_GREETING):
+        if (next_state == self.EXPECTING_USER_MAIL_FROM_ADDRESS):
             self.reset()
 
     def quit_immediately(self):
@@ -522,11 +524,18 @@ def main():
 
         try:
 
-            while True:
+            # We might need two loops
+            # If False is returned, that means we are not looking for a response from the server.
+            smtp_client.evaluate_state()
 
-                # If False is returned, that means we are not looking for a response from the server.
-                if not smtp_client.evaluate_state():
-                    continue
+            DebugMode.print(debug_mode, f"attempting to connect to SMTP server {server_name}:{server_port}...", DebugMode.INFO)
+
+            client_socket.connect((server_name, server_port))
+
+            DebugMode.print(debug_mode, f"opened a socket to SMTP server {server_name}:{server_port}", DebugMode.SUCCESS)
+
+            # I think this is better than while True
+            while socket_is_connected(connection_socket=client_socket):
 
                 # 1. When your program connects to the server, it must be prepared to
                 # receive a correct greeting message. Your program will do nothing with the
@@ -537,13 +546,7 @@ def main():
                 # 1b. If the greeting message is valid, you should reply to the greeting
                 # with the SMTP HELO message using the format from the non-terminal. It
                 # will look like "HELO client-hostname.cs.unc.edu", where that is a
-                # hostname of the server the client program is running on.
-
-                DebugMode.print(debug_mode, f"attempting to connect to SMTP server {server_name}:{server_port}...", DebugMode.INFO)
-
-                client_socket.connect((server_name, server_port))
-
-                DebugMode.print(debug_mode, f"opened a socket to SMTP server {server_name}:{server_port}", DebugMode.SUCCESS)
+                # hostname of the server the client program is running on
 
                 # Attempt to receive the greeting message
                 # .decode() is required or the Python script hangs
@@ -554,8 +557,7 @@ def main():
                 parser = Parser(input_string=data, debug_mode=debug_mode)
                 smtp_client.set_parser(current_parser=parser)
                 smtp_client.set_socket(client_socket)
-
-                continue
+                smtp_client.evaluate_state()
 
 
                 # Users should be able to specify multiple email recipients by providing a list of
@@ -623,32 +625,25 @@ def main():
                 # 4a. If the wrong message is given, I suppose you print a 1-line error
                 # to standard out and terminate the client application.
 
-        except EOFError:
+        except EOFError as e:
             # Ctrl+D (Unix) or end-of-file from a pipe
             # break
-            pass
-        except KeyboardInterrupt:
+            DebugMode.print(debug_mode, f"EOFError: {e}", DebugMode.ERROR)
+        except KeyboardInterrupt as e:
             # Ctrl+C
             # break
-            pass
-        except ParserError as pe:
+            DebugMode.print(debug_mode, f"KeyboardInterrupt: {e}", DebugMode.ERROR)
+        except ParserError as e:
             # All errors that should be handled according to the writeup are handled as ParserError
             # objects. All other exceptions are ValueError or some other type. If a ParserError
             # occurrs, the write up says "upon receipt of any erroneous SMTP message you should
             # reset your state machine and return to the state of waiting for a valid MAIL FROM
             # message".
-            # TODO: This must change!
-            print(pe)
-            # server.reset()
-            # continue
+            DebugMode.print(debug_mode, f"ParserError: {e}", DebugMode.ERROR)
         except Exception as e:
             # print(f"An unexpected error occurred: {e}")
             # break
-            pass
-
-\
-
-
+            print(f"Exception: {e}")
 
 if __name__ == "__main__":
     main()
