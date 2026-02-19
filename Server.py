@@ -172,6 +172,8 @@ class SMTPServer:
             # Otherwise, we can send a message to the client and close the connection and return
             # to its initial state
             socket_send_msg(self.connection_socket, f"221 {get_hostname()} closing connection", self.debug_mode)
+            close_socket(self.connection_socket)
+            self.reset()
 
     def command_id_errors(self) -> str:
         """

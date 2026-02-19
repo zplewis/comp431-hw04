@@ -59,6 +59,9 @@ class SMTPClientSide:
 
         self.forward_file_lines = []
 
+        self.data_to_address_line = ""
+        self.data_subject_line = ""
+
         self.input_line = ""
         """
         This is the current line from the user. This will be useful
@@ -138,6 +141,72 @@ class SMTPClientSide:
         self.cmd_to_send_to_server = ""
 
         DebugMode.print(self.debug_mode, f"evaluate_state(client): state: {self.state}", DebugMode.INFO)
+
+        if self.state == self.EXPECTING_USER_MAIL_FROM_ADDRESS:
+            prompt = "From:"
+            print(prompt)
+            line = sys.stdin.readline()
+            temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+            while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) == 1):
+                print(prompt)
+                line = sys.stdin.readline()
+                temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+
+            # Add the one from address to the list of "forward file lines"
+            self.forward_file_lines.append(f"{prompt} <{temp_parser.get_input_line()}>")
+
+            self.advance()
+            return False
+
+        if self.state == self.EXPECTING_USER_TO_ADDRESSES:
+            prompt = "To:"
+            print(prompt)
+            line = sys.stdin.readline()
+            temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+            while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) >= 1):
+                print(prompt)
+                line = sys.stdin.readline()
+                temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+
+            # Add all of the to addresses to the list of forward file lines
+            for email in temp_parser.get_email_addresses():
+                self.forward_file_lines.append(f"{prompt} <{email}>")
+
+            # This will be helpful later when building the DATA message
+            self.data_to_address_line = ", ".join(f"<{e.strip()}" for e in temp_parser.get_email_addresses())
+
+        if self.state == self.EXPECTING_USER_SUBJECT:
+            prompt = "Subject:"
+            print(prompt)
+            line = sys.stdin.readline()
+            temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+            while not (temp_parser.match_arbitrary_text()):
+                print(prompt)
+                line = sys.stdin.readline()
+                temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+
+            # Add the one from address to the list of "forward file lines"
+            self.data_subject_line = f"{prompt} <{temp_parser.get_input_line()}>"
+            self.forward_file_lines.append(self.data_subject_line)
+
+        if self.state == self.EXPECTING_USER_MESSAGE:
+            # Now that we have made it here, it is safe to add the required text as lines in the
+            # message
+            self.forward_file_lines.append(self.forward_file_lines[0])
+            self.forward_file_lines.append(self.data_to_address_line)
+            self.forward_file_lines.append(self.data_subject_line)
+            self.forward_file_lines.append("")
+
+            prompt = "Message:"
+            print(prompt)
+            line = sys.stdin.readline()
+            temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+            while not (temp_parser.data_end_cmd()):
+                self.forward_file_lines.append(line)
+                line = sys.stdin.readline()
+                temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
+
+            self.forward_file_lines.append(line)
 
         if self.state == self.EXPECTING_SERVER_GREETING:
             if not (self.parser.match_response_code and self.parser.get_smtp_response_code() == '220'):
@@ -305,6 +374,9 @@ class SMTPClientSide:
         self.cmd_to_send_to_server = ""
         self.input_line = ""
         self.forward_file_lines = []
+
+        self.data_to_address_line = ""
+        self.data_subject_line = ""
 
     def advance(self):
         """
