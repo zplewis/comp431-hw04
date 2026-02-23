@@ -31,16 +31,7 @@ def socket_is_connected(connection_socket: socket.socket = None, debug_mode: boo
 
 def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debug_mode: bool = False) -> bool:
     """
-    Docstring for socket_send_msg
-
-    :param connection_socket: Description
-    :type connection_socket: socket
-    :param msg: Description
-    :type msg: str
-    :param debug_mode: Description
-    :type debug_mode: bool
-    :return: Description
-    :rtype: bool
+    Shared function for using an existing socket for sending a message to the other end system.
     """
 
     if not connection_socket:
@@ -57,9 +48,13 @@ def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debu
 
     try:
 
+        if not msg.endswith("\n"):
+            msg += "\n"
+
         DebugMode.print(debug_mode, f"About to send message: '{msg}'", DebugMode.INFO)
         connection_socket.sendall(msg.encode())
         DebugMode.print(debug_mode, f"Sent message successfully.", DebugMode.SUCCESS)
+        return True
 
     except OSError as e:
         DebugMode.print(debug_mode, e, DebugMode.ERROR)
@@ -76,7 +71,12 @@ def get_hostname(debug_mode: bool = False) -> str:
 
         try:
 
-            return socket.getfqdn()
+            # getfdqn() gives you the IP address
+            domain = socket.gethostname()
+            # if domain.casefold() == 'mac':
+            #     domain = '127.0.0.1'
+
+            return domain
             # return socket.gethostname()
 
         except Exception as e:
@@ -273,7 +273,7 @@ class Parser:
 
     def get_command_name(self) -> str:
         """
-        Returns the name of the command being parsed, e.g., "MAIL FROM", "RCPT TO", "DATA".
+        Returns the name of the command being parsed, e.g., "MAIL FROM", "RCPT TO", "DATA", "HELO", "QUIT".
         """
 
         return self.command_name
@@ -405,7 +405,9 @@ class Parser:
         if not self.input_string:
             return []
 
-        return self.input_string.split(',')
+        line = self.get_input_line()
+
+        return line.split(',')
 
     def get_email_domain(self) -> str:
         """
@@ -523,7 +525,7 @@ class Parser:
         """
 
         start = self.position
-        codes = ["250", "354", "500", "501", "503"]
+        codes = ["220", "221", "250", "354", "500", "501", "503"]
 
         for code in codes:
             if self.match_chars(code):
@@ -568,8 +570,34 @@ class Parser:
         recreate the "MAIL FROM:" command.
         """
 
-        return (self.match_chars("From:") and self.whitespace() and self.reverse_path() and \
+        self.position = self.BEGINNING_POSITION
+
+        if not self.match_chars("From:"):
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on 'From:'")
+
+        if not self.whitespace():
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .whitespace()")
+
+        if not self.reverse_path():
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .reverse_path()")
+
+        if not self.nullspace():
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .nullspace()")
+
+        if not self.crlf():
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .crlf()")
+
+        self.position = self.BEGINNING_POSITION
+
+        result = (self.match_chars("From:") and self.whitespace() and self.reverse_path() and \
                 self.nullspace() and self.crlf())
+
+        if result:
+            self.command_identified = True
+            self.command_parsed = True
+            self.command_name = "MAIL FROM"
+
+        return result
 
     def forwardfile_match_to_address(self) -> bool:
         """
@@ -577,8 +605,15 @@ class Parser:
         recreate the "RCPT TO:" command.
         """
 
-        return (self.match_chars("To:") and self.whitespace() and self.reverse_path() and \
+        result = (self.match_chars("To:") and self.whitespace() and self.reverse_path() and \
                 self.nullspace() and self.crlf())
+
+        if result:
+            self.command_identified = True
+            self.command_parsed = True
+            self.command_name = "RCPT TO"
+
+        return result
 
 
     def is_at_end(self) -> bool:
@@ -605,7 +640,20 @@ class Parser:
         if self.match_chars("HELO"):
             self.set_command_identified("HELO")
 
-        if not (self.whitespace() and self.domain() and self.nullspace() and self.crlf()):
+        if not self.whitespace():
+            DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on whitespace: '{self.get_input_line()}'")
+            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+
+        if not self.domain():
+            DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on domain: '{self.get_input_line()}'")
+            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+
+        if not self.nullspace():
+            DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on nullspace: '{self.get_input_line()}'")
+            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+
+        if not self.crlf():
+            DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on crlf '{self.get_input_line()}'")
             raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
         self.set_command_parsed()

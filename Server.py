@@ -10,7 +10,7 @@ Port number for your server is 800 + the last 4 digits of your PID.
 import argparse
 import socket
 from pathlib import Path
-from Parser import Parser, ParserError, DebugMode, socket_is_connected, socket_send_msg, get_hostname
+from Parser import Parser, ParserError, DebugMode, socket_is_connected, socket_send_msg, get_hostname, close_socket
 
 class SMTPServer:
     """
@@ -97,7 +97,7 @@ class SMTPServer:
         DebugMode.print(self.debug_mode, f"evaluate_state(server): state: {self.state}")
 
         if self.state == self.EXPECTING_CONNECTION:
-            if not socket_send_msg(self.connection_socket, f"220 {socket.gethostname()}", self.debug_mode):
+            if not socket_send_msg(self.connection_socket, f"220 {get_hostname()}", self.debug_mode):
                 print("Failed to send initial 220 message to client upon establishing a connection.")
                 return self.reset()
             return self.advance()
@@ -110,7 +110,7 @@ class SMTPServer:
             if not socket_send_msg(self.connection_socket, f"250 Hello {client_domain} pleased to meet you.", self.debug_mode):
                 print('Failed to send 250 Hello message to client. Closing connection.')
                 close_socket(self.connection_socket)
-            return self.reset()
+            return self.advance()
 
         # We need to know if any command is recognized to be ready for 503 errors
         # We do not check for errors until after the SMTP "speaks" first.
@@ -125,6 +125,10 @@ class SMTPServer:
             # If we made it here, the command was fully parsed successfully
             # Add the "From: <reverse-path>" line to the list of email text lines
             self.add_text_to_email_body(self.parser.get_from_line_for_email())
+
+            if not socket_send_msg(self.connection_socket, f"250 OK", self.debug_mode):
+                print('Failed to send 250 OK to client. Closing connection.')
+                close_socket(self.connection_socket)
             return self.advance()
 
         if self.state == self.EXPECTING_RCPT_TO or \
@@ -142,6 +146,10 @@ class SMTPServer:
             if self.state == self.EXPECTING_RCPT_TO:
                 self.advance()
 
+            # Send the client a 250
+            if not socket_send_msg(self.connection_socket, f"250 OK", self.debug_mode):
+                print('Failed to send 250 OK to client. Closing connection.')
+                close_socket(self.connection_socket)
             return
 
         if self.state == self.EXPECTING_RCPT_TO_OR_DATA:
@@ -151,6 +159,9 @@ class SMTPServer:
 
             # If we made it here, the command was fully parsed successfully
             # Advance so that we can start reading the message
+            if not socket_send_msg(self.connection_socket, f"354 Start mail input; end with <CRLF>.<CRLF>", self.debug_mode):
+                print('Failed to send 354 message to client. Closing connection.')
+                close_socket(self.connection_socket)
             return self.advance()
 
         if self.state == self.EXPECTING_DATA_END:
@@ -167,7 +178,8 @@ class SMTPServer:
                 raise ParserError(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
             self.add_text_to_email_body(self.parser.get_input_line())
-            return self.advance()
+            # Make sure not to advance here, this was almost a mistake that was done right in HW3
+            return False
 
         if self.state == self.EXPECTING_QUIT:
             if recognized_command != "QUIT" or not self.parser.quit_cmd():
@@ -316,23 +328,6 @@ def get_command_line_arguments():
     return arg_parser.parse_args()
 
 
-
-def close_socket(self):
-    """
-    Properly close the connection socket by calling .shutdown() then .close().
-    Probably should use try...except.
-    """
-
-    if self.connection_socket is None:
-        return
-
-    if socket_is_connected():
-        # https://docs.python.org/3.12/library/socket.html#socket.SHUT_RDWR
-        self.connection_socket.shutdown(socket.SHUT_RDWR)
-
-    self.connection_socket.close()
-
-
 def main():
     """
     This code starts here.
@@ -444,6 +439,8 @@ def main():
                             # Reaching this point means we have data from the client
                             sentence = bytes_recv.decode()
 
+                            DebugMode.print(debug_mode, f"data received: {sentence}", DebugMode.WARN)
+
                             parser = Parser(sentence, debug_mode)
                             smtp_server.set_parser(parser)
                             smtp_server.set_socket(connection_socket)
@@ -473,7 +470,7 @@ def main():
 
                         socket_send_msg(connection_socket, e)
                         close_socket(connection_socket)
-                        DebugMode.print(debug_mode, f"ParserError: {e}", DebugMode.ERROR)
+                        DebugMode.print(debug_mode, f"ParserError: {e}, input_string: {smtp_server.parser.get_input_line()}", DebugMode.ERROR)
                     except OSError as e:
                         # This can be useful for catching errors related to sockets
                         close_socket(connection_socket)
