@@ -29,6 +29,7 @@ class SMTPServer:
     def __init__(self, debug_mode: bool = False):
         self.state = self.EXPECTING_CONNECTION
         self.to_email_addresses = []
+        self.to_domains = set()
         self.email_text = []
         self.parser = None
         self.debug_mode = debug_mode
@@ -140,7 +141,10 @@ class SMTPServer:
             # If we made it here, the command was fully parsed successfully
             # Add the "To: <forward-path>" line to the list of email text lines
             self.add_text_to_email_body(self.parser.get_to_line_for_email())
-            self.to_email_addresses.append(self.parser.get_email_address())
+
+            # This is not used in HW4, domain is
+            # self.to_email_addresses.append(self.parser.get_email_address())
+            self.to_domains.add(self.parser.get_email_domain())
 
             # Only advance if this is the first time we are seeing a To: address
             if self.state == self.EXPECTING_RCPT_TO:
@@ -169,6 +173,10 @@ class SMTPServer:
             # here is considered valid until the ending comes.
             if self.parser.data_end_cmd():
                 self.process_email_message()
+                # Send the client a 250
+                if not socket_send_msg(self.connection_socket, f"250 OK", self.debug_mode):
+                    print('Failed to send 250 OK to client. Closing connection.')
+                    close_socket(self.connection_socket)
                 return self.advance()
 
             # if an error occurs while reading a line meant for the body of the message, then
@@ -278,8 +286,8 @@ class SMTPServer:
 
         # 3. For each recipient of the latest email message, append the text
         # of the email to a file with the email address as the name.
-        for email_address in self.to_email_addresses:
-            forward_path = forward_folder / email_address
+        for domain in self.to_domains:
+            forward_path = forward_folder / domain
 
             with forward_path.open("a", encoding="utf-8") as f:
                 f.write(email_complete_text)
@@ -468,7 +476,7 @@ def main():
                         # reset your state machine and return to the state of waiting for a valid MAIL FROM
                         # message".
 
-                        socket_send_msg(connection_socket, e)
+                        socket_send_msg(connection_socket, str(e))
                         close_socket(connection_socket)
                         DebugMode.print(debug_mode, f"ParserError: {e}, input_string: {smtp_server.parser.get_input_line()}", DebugMode.ERROR)
                     except OSError as e:

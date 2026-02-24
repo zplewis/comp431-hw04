@@ -57,7 +57,10 @@ class SMTPClientSide:
         self.debug_mode = debug_mode
         self.generated_cmd = ""
 
-        self.forward_file_lines_index = -1
+        # I was doing this the hard way
+        self.commands = []
+
+        self.commands_index = -1
         self.forward_file_lines = []
 
         self.data_to_address_line = ""
@@ -151,8 +154,8 @@ class SMTPClientSide:
         :rtype: Any
         """
 
-        if self.forward_file_lines_index < len(self.forward_file_lines) - 1:
-            self.forward_file_lines_index += 1
+        if self.commands_index < len(self.commands) - 1:
+            self.commands_index += 1
 
         self.self_update_parser()
 
@@ -162,7 +165,7 @@ class SMTPClientSide:
         be fed to the Parser class so that SMTP commands can be sent to the server.
         """
 
-        line = self.forward_file_lines[self.forward_file_lines_index]
+        line = self.commands[self.commands_index]
 
         if not line.endswith("\n"):
             line += "\n"
@@ -200,6 +203,7 @@ class SMTPClientSide:
 
             # Add the one from address to the list of "forward file lines"
             self.forward_file_lines.append(f"{prompt} <{temp_parser.get_input_line()}>")
+            self.commands.append(f"MAIL FROM: <{temp_parser.get_input_line()}>")
 
             self.advance()
             return self.collect_user_input()
@@ -210,12 +214,13 @@ class SMTPClientSide:
             while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) >= 1):
                 temp_parser = self.prompt_for_input(prompt)
 
-            # Add all of the to addresses to the list of forward file lines
+            # Add all of the to addresses to the list of commands
             for email in temp_parser.get_email_addresses():
-                self.forward_file_lines.append(f"{prompt} <{email}>")
+                self.commands.append(f"RCPT TO: <{email.strip()}>")
 
             # This will be helpful later when building the DATA message
-            self.data_to_address_line = ", ".join(f"<{e.strip()}>" for e in temp_parser.get_email_addresses())
+            self.data_to_address_line = "To: " + ", ".join(f"<{e.strip()}>" for e in temp_parser.get_email_addresses())
+            self.forward_file_lines.append(self.data_to_address_line)
 
             self.advance()
             return self.collect_user_input()
@@ -226,20 +231,18 @@ class SMTPClientSide:
             while not (temp_parser.match_arbitrary_text()):
                 temp_parser = self.prompt_for_input(prompt)
 
-            # Add the one from address to the list of "forward file lines"
-            self.data_subject_line = f"{prompt} <{temp_parser.get_input_line()}>"
+            # Add the subject to the forward_file_lines list
+            self.data_subject_line = f"{prompt} {temp_parser.get_input_line()}"
             self.forward_file_lines.append(self.data_subject_line)
+            # Add the blank line that is supposed to come after the subject
+            # NOTE: Do NOT add a newline character to this blank element; when joined, a newline
+            # character will be added to all lines.
+            self.forward_file_lines.append("")
 
             self.advance()
             return self.collect_user_input()
 
         if self.state == self.EXPECTING_USER_MESSAGE:
-            # Now that we have made it here, it is safe to add the required text as lines in the
-            # message
-            self.forward_file_lines.append(self.forward_file_lines[0])
-            self.forward_file_lines.append(self.data_to_address_line)
-            self.forward_file_lines.append(self.data_subject_line)
-            self.forward_file_lines.append("")
 
             prompt = "Message:"
             temp_parser = self.prompt_for_input(prompt)
@@ -255,6 +258,21 @@ class SMTPClientSide:
             # Returning True here should allow the main loop to continue and create a socket to
             # connect to the SMTP server
             self.advance()
+
+
+        # Before leaving, complete the list of commands and add what is missing
+        self.commands.append("DATA \n")
+        # Combine the commands and forward file lines to one master list that contains all that
+        # we need. No need to add "QUIT" as that is the only possible choice at the end.
+        self.commands = self.commands + self.forward_file_lines
+
+        if self.debug_mode:
+            DebugMode.print(self.debug_mode, "\n***** forward file lines*****\n", DebugMode.WARN)
+            for line in self.commands:
+                DebugMode.print(self.debug_mode, line, DebugMode.WARN)
+
+        # TODO: Remove this line
+        # sys.exit(0)
 
 
 
@@ -290,6 +308,7 @@ class SMTPClientSide:
         self.input_line = self.parser.get_input_line()
 
         DebugMode.print(self.debug_mode, f"evaluate_state(client): state: {self.get_state_str(self.state)} ({self.state})", DebugMode.INFO)
+        DebugMode.print(self.debug_mode, f"evaluate_state(client): input_string: '{self.parser.get_input_line()}'")
 
         if self.state == self.EXPECTING_QUIT_RESPONSE:
             if not socket_send_msg(self.connection_socket, "QUIT", self.debug_mode):
@@ -310,14 +329,14 @@ class SMTPClientSide:
             return True
 
         if self.state == self.EXPECTING_MAIL_FROM:
-            self.parser.rewind(0)
-            if not self.parser.forwardfile_match_from_address():
+            # self.parser.rewind(0)
+            if not self.parser.mail_from_cmd():
                 self.quit_immediately(
-                    msg=f'Parser did not find a properly-formatted From: address: "{self.parser.get_input_line()}"'
+                    msg=f'Parser did not find a properly-formatted MAIL FROM SMTP command: "{self.parser.get_input_line()}"'
                 )
 
             # print(self.parser.generate_mail_from_cmd())
-            if not socket_send_msg(self.connection_socket, self.parser.generate_mail_from_cmd(), self.debug_mode):
+            if not socket_send_msg(self.connection_socket, self.parser.get_input_line(), self.debug_mode):
                 self.quit_immediately(
                     msg='Failed to send MAIL FROM command to SMTP server. Terminating program.'
                 )
@@ -325,24 +344,25 @@ class SMTPClientSide:
             return True
 
         if self.state == self.EXPECTING_RCPT_TO:
-            if not self.parser.forwardfile_match_to_address():
+            if not self.parser.rcpt_to_cmd():
                 self.quit_immediately(
-                    msg=f"Parser did not find a properly-formatted To: address: '{self.parser.get_input_line()}'"
+                    msg=f"Parser did not find a properly-formatted RCPT TO SMTP command: '{self.parser.get_input_line()}'"
                 )
 
             # print(self.parser.generate_rcpt_to_cmd())
-            if not socket_send_msg(self.connection_socket, self.parser.generate_rcpt_to_cmd(), self.debug_mode):
+            if not socket_send_msg(self.connection_socket, self.parser.get_input_line(), self.debug_mode):
                 self.quit_immediately(
                     msg='Failed to send RCPT TO command to SMTP server. Terminating program.'
                 )
 
             return True
 
+        # This state allows either one of two things: "DATA" or "From: <email_address>"
         if self.state == self.EXPECTING_RCPT_TO_OR_DATA:
-            if self.parser.forwardfile_match_to_address():
+            if self.parser.rcpt_to_cmd():
                 self.generated_cmd = self.parser.get_command_name()
 
-                if not socket_send_msg(self.connection_socket, self.parser.generate_rcpt_to_cmd(), self.debug_mode):
+                if not socket_send_msg(self.connection_socket, self.parser.get_input_line(), self.debug_mode):
                     self.quit_immediately(
                         msg='Failed to send RCPT TO command to SMTP server. Terminating program.'
                     )
@@ -356,25 +376,21 @@ class SMTPClientSide:
             # We need to:
             # 1. Send the "DATA" command
             # 2. Prompt the user for an SMTP response
-            if not self.parser.data_cmd():
-                self.quit_immediately(
-                    msg='Client failed to generate DATA command at appropriate time. Terminating program.'
-                )
+            if self.parser.data_cmd() and self.parser.get_command_name() == "DATA":
+                if not socket_send_msg(self.connection_socket, self.parser.generate_data_cmd(), self.debug_mode):
+                    self.quit_immediately(
+                        msg='Failed to send DATA command to SMTP server. Terminating program.'
+                    )
 
-            if not self.parser.get_command_name() == "DATA":
-                print(f'Client failed to generate the appropriate command; expected: "DATA", actual: "{self.parser.get_input_line()}')
-                close_socket(self.connection_socket, self.debug_mode)
-                sys.exit(1)
+                # We do NOT advance the state machine in evaluate_state(); only in evaluate_response()
+                self.advance_forward_file_line_pointer()
+                return True
 
-            self.generated_cmd = self.parser.get_command_name()
 
-            if not socket_send_msg(self.connection_socket, self.parser.generate_data_cmd(), self.debug_mode):
-                print('Failed to send DATA command to SMTP server. Terminating program.')
-                close_socket(self.connection_socket, self.debug_mode)
-                sys.exit(1)
+            self.quit_immediately(
+                msg='Client failed to generate DATA command at appropriate time. Terminating program.'
+            )
 
-            self.advance_forward_file_line_pointer()
-            self.advance()
             return True
 
         if self.state == self.EXPECTING_DATA_END:
@@ -384,12 +400,22 @@ class SMTPClientSide:
             #     return True
 
             if end_of_file or self.parser.data_end_cmd():
-                print(self.parser.generate_data_end_cmd())
+                if not socket_send_msg(self.connection_socket, self.parser.generate_data_end_cmd(), self.debug_mode):
+                    self.quit_immediately(
+                        msg='Failed to send .\\n (DATA END) command to SMTP server. Terminating program.'
+                    )
                 return True
 
             # If we are here, that means the we are reading lines in the forward
             # file that are part of the body of the email message.
-            print(self.parser.get_input_line())
+            if not socket_send_msg(self.connection_socket, self.parser.get_input_line(), self.debug_mode):
+                self.quit_immediately(
+                    msg='Failed to send text from body of the messaged to SMTP server. Terminating program.'
+                )
+                # We do NOT return here because no response is required from the SMTP server yet
+
+            self.advance_forward_file_line_pointer()
+            return self.evaluate_state()
 
         return False
 
@@ -477,8 +503,8 @@ class SMTPClientSide:
         # 4) # If the generated command is "RCPT TO:", then do NOT advance and there is NO need
         # to process the input string (most likely an email address) again.
         # Only advance if the "DATA" command has been determined to be needed by evaluate_state()
-        if self.state == self.EXPECTING_RCPT_TO_OR_DATA and self.generated_cmd != "DATA":
-            return self.evaluate_state() # Return False
+        # if self.state == self.EXPECTING_RCPT_TO_OR_DATA and self.generated_cmd != "DATA":
+        #     return self.evaluate_state() # Return False
 
         # Do NOT advance yet; this represents the first message received after the connection (socket)
         # has been established. Now, the client has to send a HELO message to the SMTP server and
@@ -507,7 +533,8 @@ class SMTPClientSide:
         # self.generated_cmd = ""
         self.parser = None
         self.input_line = ""
-        self.forward_file_lines_index = -1
+        self.commands = []
+        self.commands_index = -1
         self.forward_file_lines = []
 
         self.data_to_address_line = ""

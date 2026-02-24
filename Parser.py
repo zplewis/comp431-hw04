@@ -38,7 +38,7 @@ def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debu
         DebugMode.print(debug_mode, "socket_send_msg(); connection_socket variable was invalid")
         return False
 
-    if not msg:
+    if not msg or msg is None:
         DebugMode.print(debug_mode, "socket_send_msg(); msg string variable was invalid")
         return False
 
@@ -51,7 +51,9 @@ def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debu
         if not msg.endswith("\n"):
             msg += "\n"
 
-        DebugMode.print(debug_mode, f"About to send message: '{msg}'", DebugMode.INFO)
+        log_friendly_msg = msg[:-1] if msg.endswith("\n") else msg
+
+        DebugMode.print(debug_mode, f"About to send message: '{log_friendly_msg}'", DebugMode.INFO)
         connection_socket.sendall(msg.encode())
         DebugMode.print(debug_mode, f"Sent message successfully.", DebugMode.SUCCESS)
         return True
@@ -425,7 +427,7 @@ class Parser:
         if not parts or len(parts) != 2:
             return ""
 
-        return parts[1]
+        return parts[1].casefold().strip()
 
     def get_domain_from_helo(self) -> str:
         """
@@ -585,7 +587,7 @@ class Parser:
             DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .nullspace()")
 
         if not self.crlf():
-            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .crlf()")
+            DebugMode.print(self.debug_mode, "forwardfile_match_from_address failed on .crlf()", DebugMode.ERROR)
 
         self.position = self.BEGINNING_POSITION
 
@@ -604,6 +606,25 @@ class Parser:
         Matches the "To: <sender@domain.com>" from a forward file. From this line, we can
         recreate the "RCPT TO:" command.
         """
+
+        self.position = self.BEGINNING_POSITION
+
+        if not self.match_chars("To:"):
+            DebugMode.print(self.debug_mode, "forwardfile_match_to_address failed on 'To:'", DebugMode.ERROR)
+
+        if not self.whitespace():
+            DebugMode.print(self.debug_mode, "forwardfile_match_to_address failed on .whitespace()", DebugMode.ERROR)
+
+        if not self.reverse_path():
+            DebugMode.print(self.debug_mode, "forwardfile_match_to_address failed on .reverse_path()", DebugMode.ERROR)
+
+        if not self.nullspace():
+            DebugMode.print(self.debug_mode, "forwardfile_match_to_address failed on .nullspace()", DebugMode.ERROR)
+
+        if not self.crlf():
+            DebugMode.print(self.debug_mode, "forwardfile_match_to_address failed on .crlf()", DebugMode.ERROR)
+
+        self.position = self.BEGINNING_POSITION
 
         result = (self.match_chars("To:") and self.whitespace() and self.reverse_path() and \
                 self.nullspace() and self.crlf())
@@ -725,6 +746,7 @@ class Parser:
         # This is an example of a literal string in a production rule
         # If an error occurs here, it is a 500 error
         if not self.match_chars(cmd_name):
+            DebugMode.print(self.debug_mode, f"{cmd_name}_cmd(); failed on match_chars({cmd_name}): '{self.get_input_line()}'")
             return self.raise_parser_error(ParserError.COMMAND_UNRECOGNIZED, check_only)
 
         # Flag that the command has been identified
@@ -734,8 +756,13 @@ class Parser:
         if check_only:
             return True
 
-        if not (self.nullspace() and self.crlf()):
-            raise ParserError(ParserError.COMMAND_UNRECOGNIZED)
+        if not self.nullspace():
+            DebugMode.print(self.debug_mode, f"{cmd_name}_cmd(); failed on nullspace: '{self.get_input_line()}'")
+            return self.raise_parser_error(ParserError.COMMAND_UNRECOGNIZED, check_only)
+
+        if not self.crlf():
+            DebugMode.print(self.debug_mode, f"{cmd_name}_cmd(); failed on crlf: '{self.get_input_line()}'")
+            return self.raise_parser_error(ParserError.COMMAND_UNRECOGNIZED, check_only)
 
         # If we reach here, the line was successfully parsed
         self.set_command_parsed()
