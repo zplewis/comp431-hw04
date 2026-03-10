@@ -1,5 +1,17 @@
 # comp431-hw04 - Building an SMTP Client/Server System Using Sockets
 
+## Results
+
+```bash
+export PYTHONDONTWRITEBYTECODE=1
+
+# Command for starting the server
+python3 ./Server.py --debug 12956
+
+# Command for starting the client
+python3 ./Client.py
+```
+
 ## Notes
 
 - sockets are the fundamental building block for client/server systems

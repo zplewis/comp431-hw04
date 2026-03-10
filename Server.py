@@ -45,7 +45,7 @@ class SMTPServer:
         if not isinstance(current_parser, Parser):
             raise ValueError("parser must be an instance of Parser class.")
 
-    def set_socket(self, connection_socket: socket = None):
+    def set_socket(self, connection_socket: socket.socket):
         """
         Docstring for set_socket
 
@@ -207,7 +207,7 @@ class SMTPServer:
         RCPT TO or DATA.
         """
 
-        if self.state not in [self.EXPECTING_MAIL_FROM, self.EXPECTING_RCPT_TO, self.EXPECTING_RCPT_TO_OR_DATA]:
+        if self.state not in [self.EXPECTING_MAIL_FROM, self.EXPECTING_RCPT_TO, self.EXPECTING_RCPT_TO_OR_DATA, self.EXPECTING_QUIT]:
             return ""
 
         if not isinstance(self.parser, Parser):
@@ -231,6 +231,9 @@ class SMTPServer:
         if self.state == self.EXPECTING_RCPT_TO_OR_DATA and recognized_command not in ["RCPT TO", "DATA"]:
             raise ParserError(ParserError.BAD_SEQUENCE_OF_COMMANDS)
 
+        if self.state == self.EXPECTING_QUIT and recognized_command != "QUIT":
+            raise ParserError(ParserError.BAD_SEQUENCE_OF_COMMANDS)
+
         return recognized_command
 
     def reset(self):
@@ -239,6 +242,7 @@ class SMTPServer:
         """
         self.state = self.EXPECTING_CONNECTION
         self.to_email_addresses = []
+        self.to_domains = set()
         self.email_text = []
 
     def advance(self):
@@ -246,7 +250,7 @@ class SMTPServer:
         Advances the state of the SMTP server by 1. If a message is completed,
         then it starts over and waits for the next one.
         """
-        if self.state != self.EXPECTING_DATA_END:
+        if self.state != self.EXPECTING_QUIT:
             self.state += 1
             return
 
@@ -291,19 +295,6 @@ class SMTPServer:
 
             with forward_path.open("a", encoding="utf-8") as f:
                 f.write(email_complete_text)
-
-    def get_hostname(self) -> str:
-        """
-        Returns the hostname of the server this code is running on. This works on
-        the cs.unc.edu server even though this just prints "Mac" as my hostname.
-        """
-
-        try:
-            return self.connection_socket.gethostname()
-        except:
-            return ""
-
-
 
 
 def get_command_line_arguments():
@@ -478,7 +469,12 @@ def main():
 
                         socket_send_msg(connection_socket, str(e))
                         close_socket(connection_socket)
-                        DebugMode.print(debug_mode, f"ParserError: {e}, input_string: {smtp_server.parser.get_input_line()}", DebugMode.ERROR)
+
+                        input_line = ""
+                        if smtp_server is not None and smtp_server.parser is not None:
+                            input_line = smtp_server.parser.get_input_line()
+
+                        DebugMode.print(debug_mode, f"ParserError: {e}, input_string: {input_line}", DebugMode.ERROR)
                     except OSError as e:
                         # This can be useful for catching errors related to sockets
                         close_socket(connection_socket)

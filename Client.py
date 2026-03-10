@@ -157,6 +157,8 @@ class SMTPClientSide:
         if self.commands_index < len(self.commands) - 1:
             self.commands_index += 1
 
+        DebugMode.print(self.debug_mode, f"advance_forward_file_line_pointer(); commands_index: {self.commands_index}, len(commands): {len(self.commands)}", DebugMode.INFO)
+
         self.self_update_parser()
 
     def self_update_parser(self):
@@ -308,10 +310,10 @@ class SMTPClientSide:
         self.input_line = self.parser.get_input_line()
 
         DebugMode.print(self.debug_mode, f"evaluate_state(client): state: {self.get_state_str(self.state)} ({self.state})", DebugMode.INFO)
-        DebugMode.print(self.debug_mode, f"evaluate_state(client): input_string: '{self.parser.get_input_line()}'")
+        DebugMode.print(self.debug_mode, f"evaluate_state(client): input_string: '{self.parser.get_input_line()}'", DebugMode.WARN)
 
         if self.state == self.EXPECTING_QUIT_RESPONSE:
-            if not socket_send_msg(self.connection_socket, "QUIT", self.debug_mode):
+            if not socket_send_msg(self.connection_socket, "QUIT\n", self.debug_mode):
                 self.quit_immediately(
                     msg=f'Failed to send SMTP QUIT in response to error code from SMTP server: "{self.parser.get_input_line()}'
                 )
@@ -369,7 +371,6 @@ class SMTPClientSide:
                     )
 
                 # We do NOT advance the state machine because we have not encountered "DATA" yet.
-                self.advance_forward_file_line_pointer()
                 return True
 
             # If we made it here, that means that the text is NOT "To: <emailaddress>"
@@ -380,15 +381,14 @@ class SMTPClientSide:
             self.parser.rewind(self.parser.BEGINNING_POSITION)
             DebugMode.print(self.debug_mode, f"About to check whether input string is the DATA command: '{self.parser.get_input_line()}'", DebugMode.INFO)
             if self.parser.data_cmd(check_only=True) and self.parser.get_command_name() == "DATA":
+                self.generated_cmd = self.parser.get_command_name()
                 if not socket_send_msg(self.connection_socket, self.parser.generate_data_cmd(), self.debug_mode):
                     self.quit_immediately(
                         msg='Failed to send DATA command to SMTP server. Terminating program.'
                     )
 
                 # We do NOT advance the state machine in evaluate_state(); only in evaluate_response()
-                self.advance_forward_file_line_pointer()
                 return True
-
 
             self.quit_immediately(
                 msg='Client failed to generate RCPT TO or DATA commands at appropriate time. Terminating program.'
@@ -418,6 +418,10 @@ class SMTPClientSide:
                 # We do NOT return here because no response is required from the SMTP server yet
 
             self.advance_forward_file_line_pointer()
+
+            if self.parser.get_input_line() in [".", ".\n"]:
+                return True
+
             return self.evaluate_state()
 
         return False
@@ -492,16 +496,17 @@ class SMTPClientSide:
         # 1) Encountering the first line of the email body, switching to EXPECTING_DATA_END state
         if self.state == self.EXPECTING_RCPT_TO_OR_DATA and self.generated_cmd == "DATA":
             self.advance()
-            return self.evaluate_state() # Return True
-
-        # 2) Encountering the "From:" line of a new email, switching from EXPECTING_DATA_END to EXPECTING_MAIL_FROM
-        if self.state == self.EXPECTING_DATA_END and self.generated_cmd == "MAIL FROM":
-            self.advance()
+            self.advance_forward_file_line_pointer()
             return self.evaluate_state() # Return True
 
         # 3) Encountering the end-of-file (empty string), switching from EXPECTING_DATA_END to EXPECTING_MAIL_FROM
         if self.state == self.EXPECTING_DATA_END and end_of_file:
             return self.quit_immediately("end-of-file was reached during state 'EXPECTING_DATA_END'.")
+
+        # 2) Encountering the "From:" line of a new email, switching from EXPECTING_DATA_END to EXPECTING_MAIL_FROM
+        if self.state == self.EXPECTING_DATA_END:
+            self.advance()
+            return self.evaluate_state() # Return True
 
         # 4) # If the generated command is "RCPT TO:", then do NOT advance and there is NO need
         # to process the input string (most likely an email address) again.
@@ -799,12 +804,12 @@ def main():
         except EOFError as e:
             # Ctrl+D (Unix) or end-of-file from a pipe
             # break
-            DebugMode.print(debug_mode, f"EOFError: {e}", DebugMode.ERROR)
+            DebugMode.print(debug_mode, f"EOFError: {str(e)}", DebugMode.ERROR)
             print("Program terminated by pressing CTRL+D or end-of-file.")
         except KeyboardInterrupt as e:
             # Ctrl+C
             # break
-            DebugMode.print(debug_mode, f"KeyboardInterrupt: {e}", DebugMode.ERROR)
+            DebugMode.print(debug_mode, f"KeyboardInterrupt: {str(e)}", DebugMode.ERROR)
             print("Program terminated by pressing CTRL + C.")
         except ParserError as e:
             # All errors that should be handled according to the writeup are handled as ParserError
@@ -812,11 +817,11 @@ def main():
             # occurrs, the write up says "upon receipt of any erroneous SMTP message you should
             # reset your state machine and return to the state of waiting for a valid MAIL FROM
             # message".
-            DebugMode.print(debug_mode, f"ParserError: {e}", DebugMode.ERROR)
+            DebugMode.print(debug_mode, f"ParserError: {str(e)}", DebugMode.ERROR)
         except Exception as e:
             # print(f"An unexpected error occurred: {e}")
             # break
-            print(f"Exception: {e}")
+            print(f"Exception: {str(e)}")
 
         smtp_client.reset()
 

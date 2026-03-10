@@ -5,14 +5,9 @@
 import socket
 import sys
 
-def socket_is_connected(connection_socket: socket.socket = None, debug_mode: bool = False) -> bool:
+def socket_is_connected(connection_socket: socket.socket, debug_mode: bool = False) -> bool:
     """
     Docstring for socket_is_connected
-
-    :param connection_socket: Description
-    :type connection_socket: socket
-    :return: Description
-    :rtype: bool
     """
 
     if not connection_socket or connection_socket is None:
@@ -29,7 +24,7 @@ def socket_is_connected(connection_socket: socket.socket = None, debug_mode: boo
         DebugMode.print(debug_mode, f"socket_is_connected(); exception occurred: {e}", DebugMode.ERROR)
         return False
 
-def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debug_mode: bool = False) -> bool:
+def socket_send_msg(connection_socket: socket.socket, msg: str = "", debug_mode: bool = False) -> bool:
     """
     Shared function for using an existing socket for sending a message to the other end system.
     """
@@ -38,7 +33,10 @@ def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debu
         DebugMode.print(debug_mode, "socket_send_msg(); connection_socket variable was invalid")
         return False
 
-    if not msg or msg is None:
+    # From the client, we need to be able to send empty messages to the server, like when
+    # there is a blank line in the body of an email.
+    # if not msg or msg is None:
+    if msg is None:
         DebugMode.print(debug_mode, "socket_send_msg(); msg string variable was invalid")
         return False
 
@@ -53,15 +51,15 @@ def socket_send_msg(connection_socket: socket.socket = None, msg: str = "", debu
 
         log_friendly_msg = msg[:-1] if msg.endswith("\n") else msg
 
-        DebugMode.print(debug_mode, f"About to send message: '{log_friendly_msg}'", DebugMode.INFO)
+        DebugMode.print(debug_mode, f"About to send message: '{log_friendly_msg.replace("\n","")}'", DebugMode.WARN)
         connection_socket.sendall(msg.encode())
         DebugMode.print(debug_mode, f"Sent message successfully.", DebugMode.SUCCESS)
         return True
 
     except OSError as e:
-        DebugMode.print(debug_mode, e, DebugMode.ERROR)
+        DebugMode.print(debug_mode, str(e), DebugMode.ERROR)
     except Exception as e:
-        DebugMode.print(debug_mode, e, DebugMode.ERROR)
+        DebugMode.print(debug_mode, str(e), DebugMode.ERROR)
 
     return False
 
@@ -82,10 +80,10 @@ def get_hostname(debug_mode: bool = False) -> str:
             # return socket.gethostname()
 
         except Exception as e:
-            DebugMode.print(debug_mode, f"get_hostname(); failed to get hostname: {e}", DebugMode.ERROR)
+            DebugMode.print(debug_mode, f"get_hostname(); failed to get hostname: {str(e)}", DebugMode.ERROR)
             return ""
 
-def close_socket(connection_socket: socket.socket = None, debug_mode: bool = False) -> bool:
+def close_socket(connection_socket: socket.socket|None, debug_mode: bool = False) -> bool:
     """
     Docstring for close_socket
 
@@ -113,8 +111,8 @@ def close_socket(connection_socket: socket.socket = None, debug_mode: bool = Fal
         return True
 
     except Exception as e:
-        connection_socket = None
-        DebugMode.print(debug_mode, f"close_socket(); exception occurred: {e}")
+        # connection_socket = None
+        DebugMode.print(debug_mode, f"close_socket(); exception occurred: {str(e)}")
 
     return False
 
@@ -134,6 +132,7 @@ class DebugMode():
     ERROR = 2 # Red
     SUCCESS = 3 # Green
 
+    @staticmethod
     def get_color_from_type(log_type: int = 0) -> str:
         """
         Docstring for get_color_from_type
@@ -153,6 +152,7 @@ class DebugMode():
 
         return DebugMode.ENDC
 
+    @staticmethod
     def print(debug_mode: bool, text: str, log_type: int = 0):
         if not debug_mode:
             return
@@ -320,6 +320,11 @@ class Parser:
 
         self.reset()
         if self.data_cmd(check_only=True):
+            self.rewind(start)
+            return True
+
+        self.reset()
+        if self.quit_cmd(check_only=True):
             self.rewind(start)
             return True
 
@@ -643,7 +648,7 @@ class Parser:
         """
         return self.position >= self.OUT_OF_BOUNDS
 
-    def raise_parser_error(self, error_no: int, check_only: bool = False) -> bool:
+    def raise_parser_error(self, error_no: int, check_only: bool = False):
         """
         Raises a ParserError with the given error number if check_only is False.
         """
@@ -663,19 +668,19 @@ class Parser:
 
         if not self.whitespace():
             DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on whitespace: '{self.get_input_line()}'")
-            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+            raise ParserError(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
         if not self.domain():
             DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on domain: '{self.get_input_line()}'")
-            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+            raise ParserError(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
         if not self.nullspace():
             DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on nullspace: '{self.get_input_line()}'")
-            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+            raise ParserError(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
         if not self.crlf():
             DebugMode.print(self.debug_mode, f"match_helo_msg(); failed on crlf '{self.get_input_line()}'")
-            raise self.raise_parser_error(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
+            raise ParserError(ParserError.SYNTAX_ERROR_IN_PARAMETERS)
 
         self.set_command_parsed()
         return True
@@ -776,6 +781,7 @@ class Parser:
         <quit-cmd> ::= "QUIT" <nullspace> <CRLF>
         """
 
+        DebugMode.print(self.debug_mode, "reached quit_cmd()")
         return self.word_only_commands("QUIT", check_only=check_only)
 
     def data_cmd(self, check_only: bool = False) -> bool:
