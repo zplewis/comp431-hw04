@@ -782,7 +782,7 @@ class Parser:
         """
 
         DebugMode.print(self.debug_mode, "reached quit_cmd()")
-        return self.word_only_commands("QUIT", check_only=check_only)
+        return self.word_only_commands(cmd_name="QUIT", check_only=check_only)
 
     def data_cmd(self, check_only: bool = False) -> bool:
         """
@@ -791,6 +791,7 @@ class Parser:
         <data-cmd> ::= "DATA" <nullspace> <CRLF>
         """
 
+        DebugMode.print(self.debug_mode, "reached data_cmd()")
         return self.word_only_commands("DATA", check_only=check_only)
 
     def data_read_msg_line(self):

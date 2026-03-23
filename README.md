@@ -9,8 +9,29 @@ export PYTHONDONTWRITEBYTECODE=1
 python3 ./Server.py --debug 12956
 
 # Command for starting the client
-python3 ./Client.py
+python3 ./Client.py --debug localhost 12956
 ```
+
+## How this should work
+
+With the server running and waiting for a client to connect...
+
+- When a client connects, the server "speaks" first, sending a `220 hostname` to the client
+  - "hostname" in this case is the hostname of the SMTP server
+- When the client receives this message, then it sends the message `HELO hostname` to the SMTP server
+- When the server receives the **HELO** message, it sends a `250 Hello` to the client.
+- Once the client receives the `250 Hello` from the server,  it begins sending SMTP messages to the
+  server as required to send a message:
+- Client sends `MAIL FROM`, server sends `250 OK`
+- Client sends `RCTP_TO`, server sends `250 OK`
+- If the user specified more than one email address, then `RCTP TO` is sent; otherwise, `DATA` is
+  sent to the SMTP server.
+- Once the client sends `DATA`, client should send back `354`.
+- Client sends `From:`, `To:`, `Subject:`, and then the body of the message until `.` is sent;
+  server then responds with `250 OK`
+- Client then sends the `QUIT` SMTP message and is expecting a 221
+  - For some reason, the server sends `250 OK`, which is incorrect
+- Client sends the `QUIT` SMTP message a second time, then the server sends `221` correctly.
 
 ## Notes
 
