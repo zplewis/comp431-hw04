@@ -1631,7 +1631,7 @@ class SMTPClientSide:
 
         if self.state == self.EXPECTING_SERVER_HELLO:
             DebugMode.print(self.debug_mode, "About to send HELO message to SMTP server...")
-            if not socket_send_msg(self.connection_socket, f"HELO {get_hostname()}", self.debug_mode):
+            if not socket_send_msg(self.connection_socket, f"HELO {get_hostname()}\n", self.debug_mode):
                 self.quit_immediately(
                     msg='Failed to send HELO msg to SMTP server. Terminating program.'
                 )

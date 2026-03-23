@@ -253,7 +253,7 @@ last modification date
 To connect to the server:
 
 ```bash
-ssh -l onyen comp431-1sp6.cs.unc.edu
+ssh -l onyen comp431-1sp26.cs.unc.edu
 
 # ssh onyen@comp431-1sp26.cs.unc.edu
 ```
