@@ -6,10 +6,10 @@
 export PYTHONDONTWRITEBYTECODE=1
 
 # Command for starting the server
-python3 ./Server.py --debug 12956
+export PYTHONDONTWRITEBYTECODE=1 && python3 ./Server.py --debug 12956
 
 # Command for starting the client
-python3 ./Client.py --debug localhost 12956
+export PYTHONDONTWRITEBYTECODE=1 && python3 ./Client.py --debug localhost 12956
 ```
 
 ## How this should work
