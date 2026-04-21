@@ -9,6 +9,8 @@ export PYTHONDONTWRITEBYTECODE=1
 export PYTHONDONTWRITEBYTECODE=1 && python3 ./Server.py --debug 12956
 
 # Command for starting the client
+# Always use 3 email addresses for the test:
+# ythant@unc.edu,zplewis@unc.edu,patrick_lewis@unc.edu
 export PYTHONDONTWRITEBYTECODE=1 && python3 ./Client.py --debug localhost 12956
 ```
 

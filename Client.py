@@ -1526,7 +1526,24 @@ class SMTPClientSide:
 
         print(prompt)
         line = sys.stdin.readline()
+
+        # If sys.stdin.readline() encounters the end-of-file, then it returns an empty string
+        if line == "":
+            raise EOFError("End-of-file has been reached.")
+
         return Parser(input_string=line, debug_mode=self.debug_mode)
+
+    def one_line_print(self, text: str):
+        """
+        A substitute for print since errors when prompting for user input should be
+        1-line English error messages printed to standard out.
+        """
+
+        if not text:
+            return
+
+        sys.stdout.write(text + "\n")
+        sys.stdout.flush()
 
 
     def collect_user_input(self):
@@ -1542,6 +1559,7 @@ class SMTPClientSide:
             prompt = "From:"
             temp_parser = self.prompt_for_input(prompt)
             while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) == 1):
+                self.one_line_print(f"Please enter a valid email address for '{prompt}'.")
                 temp_parser = self.prompt_for_input(prompt)
 
             # Add the one from address to the list of "forward file lines"
@@ -1555,6 +1573,7 @@ class SMTPClientSide:
             prompt = "To:"
             temp_parser = self.prompt_for_input(prompt)
             while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) >= 1):
+                self.one_line_print(f"Please enter a valid email address for '{prompt}'.")
                 temp_parser = self.prompt_for_input(prompt)
 
             # Add all of the to addresses to the list of commands
@@ -1593,6 +1612,11 @@ class SMTPClientSide:
                 self.forward_file_lines.append(temp_parser.get_input_line())
                 DebugMode.print(self.debug_mode, temp_parser.get_input_line())
                 line = sys.stdin.readline()
+
+                # If sys.stdin.readline() encounters the end-of-file, then it returns an empty string
+                if line == "":
+                    raise EOFError("End-of-file has been reached.")
+
                 temp_parser = Parser(input_string=line, debug_mode=self.debug_mode)
 
 
@@ -1615,9 +1639,6 @@ class SMTPClientSide:
             DebugMode.print(self.debug_mode, "\n***** forward file lines*****\n", DebugMode.WARN)
             for line in self.commands:
                 DebugMode.print(self.debug_mode, line, DebugMode.WARN)
-
-        # TODO: Remove this line
-        # sys.exit(0)
 
 
 
@@ -1842,10 +1863,12 @@ class SMTPClientSide:
         # Handle the reasons to re-evaluate the current line from the forward file after
         # advancing the state
         # 1) Encountering the first line of the email body, switching to EXPECTING_DATA_END state
-        if self.state == self.EXPECTING_RCPT_TO_OR_DATA and self.generated_cmd == "DATA":
-            self.advance()
+        if self.state == self.EXPECTING_RCPT_TO_OR_DATA:
+            # Advance the state if the current command is a DATA command:
+            if self.generated_cmd == "DATA":
+                self.advance()
             self.advance_forward_file_line_pointer()
-            return self.evaluate_state() # Return True
+            return True
 
         # 3) Encountering the end-of-file (empty string), EXPECTING_DATA_END to EXPECTING_MAIL_FROM
         if self.state == self.EXPECTING_DATA_END and end_of_file:
