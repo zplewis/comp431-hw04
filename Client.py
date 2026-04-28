@@ -420,7 +420,14 @@ class Parser:
 
         line = self.get_input_line()
 
-        return line.split(',')
+        split_addresses = line.split(',')
+
+        # num_at_signs = line.count("@")
+
+        # if num_at_signs != len(split_addresses) + 1:
+        #     return []
+
+        return split_addresses
 
     def get_email_domain(self) -> str:
         """
@@ -1227,8 +1234,10 @@ class Parser:
             self.rewind(start)
             return False
 
-        while self.is_char():
-            pass
+        while not self.is_at_end():
+            # print(f"char: {self.current_char()}")
+            if not self.is_char():
+                return True
 
         return True
 
@@ -1515,7 +1524,7 @@ class SMTPClientSide:
 
         self.parser = Parser(line, debug_mode=self.debug_mode)
 
-    def prompt_for_input(self, prompt: str) -> Parser:
+    def prompt_for_input(self, prompt: str, remove_whitespace: bool = False) -> Parser:
         """
         Code for prompting the user for input. Since it is repeated multiple times, it could be
         its own function.
@@ -1526,6 +1535,12 @@ class SMTPClientSide:
 
         print(prompt)
         line = sys.stdin.readline()
+
+        # Remove all whitespace from the string
+        if remove_whitespace:
+            line = "".join(line.split())
+
+        DebugMode.print(self.debug_mode, text=line, log_type=DebugMode.WARN)
 
         # If sys.stdin.readline() encounters the end-of-file, then it returns an empty string
         if line == "":
@@ -1557,10 +1572,17 @@ class SMTPClientSide:
 
         if self.state == self.EXPECTING_USER_MAIL_FROM_ADDRESS:
             prompt = "From:"
-            temp_parser = self.prompt_for_input(prompt)
+            temp_parser = self.prompt_for_input(prompt, remove_whitespace=True)
             while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) == 1):
-                self.one_line_print(f"Please enter a valid email address for '{prompt}'.")
-                temp_parser = self.prompt_for_input(prompt)
+                temp_parser.rewind(0)
+                DebugMode.print(self.debug_mode, text=f"local_part passed: {temp_parser.local_part()}")
+                temp_parser.rewind(0)
+                DebugMode.print(self.debug_mode, text=f"Mailbox passed: {temp_parser.mailbox()}")
+                temp_parser.rewind(0)
+                DebugMode.print(self.debug_mode, text=f"Mailboxes passed: {temp_parser.mailboxes()}")
+                DebugMode.print(self.debug_mode, text=f"# of email addresses: {len(temp_parser.get_email_addresses())}")
+                self.one_line_print(f"Please enter a valid email address for '{prompt}': '{temp_parser.get_input_line()}'")
+                temp_parser = self.prompt_for_input(prompt, remove_whitespace=True)
 
             # Add the one from address to the list of "forward file lines"
             self.forward_file_lines.append(f"{prompt} <{temp_parser.get_input_line()}>")
@@ -1571,10 +1593,10 @@ class SMTPClientSide:
 
         if self.state == self.EXPECTING_USER_TO_ADDRESSES:
             prompt = "To:"
-            temp_parser = self.prompt_for_input(prompt)
+            temp_parser = self.prompt_for_input(prompt, remove_whitespace=True)
             while not (temp_parser.mailboxes() and len(temp_parser.get_email_addresses()) >= 1):
-                self.one_line_print(f"Please enter a valid email address for '{prompt}'.")
-                temp_parser = self.prompt_for_input(prompt)
+                self.one_line_print(f"Please enter a valid email address for '{prompt}'. '{temp_parser.get_input_line_raw()}'")
+                temp_parser = self.prompt_for_input(prompt, remove_whitespace=True)
 
             # Add all of the to addresses to the list of commands
             for email in temp_parser.get_email_addresses():

@@ -1505,6 +1505,12 @@ class SMTPServer:
 
         if self.state == self.EXPECTING_QUIT:
             DebugMode.print(self.debug_mode, "About to check for QUIT command...")
+
+            # It is possible to encounter another MAIL FROM command at this stage.
+            if self.parser.mail_from_cmd(check_only=True):
+                self.state = self.EXPECTING_MAIL_FROM
+                return self.evaluate_state()
+
             if not self.parser.quit_cmd(check_only=True):
                 raise ParserError(ParserError.COMMAND_UNRECOGNIZED)
 
@@ -1555,7 +1561,12 @@ class SMTPServer:
         """
         Resets the SMTP server state machine to expect a new email.
         """
-        self.state = self.EXPECTING_CONNECTION
+
+        if self.state  < self.EXPECTING_MAIL_FROM:
+            self.state = self.EXPECTING_CONNECTION
+        else:
+            self.state = self.EXPECTING_MAIL_FROM  # self.EXPECTING_CONNECTION
+
         self.to_email_addresses = []
         self.to_domains = set()
         self.email_text = []
@@ -1792,13 +1803,13 @@ def main():
                     # established anyway.
                     except EOFError as e:
                         # Ctrl+D (Unix) or end-of-file from a pipe
-                        close_socket(connection_socket)
-                        print(e)
+                        # close_socket(connection_socket)
+                        # print(e)
                         DebugMode.print(debug_mode, f"EOFError: {e}", DebugMode.ERROR)
                     except KeyboardInterrupt as e:
                         # Ctrl+C
                         close_socket(connection_socket)
-                        print(e)
+                        # print(e)
                         DebugMode.print(debug_mode, f"KeyboardInterrupt (error): {e}", DebugMode.ERROR)
                     except ParserError as e:
                         # All errors that should be handled according to the writeup are handled as ParserError
@@ -1820,27 +1831,30 @@ def main():
                     except OSError as e:
                         # This can be useful for catching errors related to sockets
                         close_socket(connection_socket)
-                        print(e)
+                        # print(e)
                         DebugMode.print(debug_mode, f"OSError: {e}", DebugMode.ERROR)
                     except Exception as e:
                         # print(f"An unexpected error occurred: {e}")
                         close_socket(connection_socket)
-                        print(e)
+                        # print(e)
                         DebugMode.print(debug_mode, f"General Exception (connection_socket): {e}", DebugMode.ERROR)
 
                     # attempt to shut down the connection socket anyway just in case
                     # close_socket(connection_socket)
                     smtp_server.reset()
 
+                    should_close_socket = False
 
         except EOFError as e:
             # Ctrl+D (Unix) or end-of-file from a pipe
             # break
             DebugMode.print(debug_mode, f"EOFError: {e}", DebugMode.ERROR)
+
         except KeyboardInterrupt as e:
             # Ctrl+C
             # break
             DebugMode.print(debug_mode, f"KeyboardInterrupt (error): {e}", DebugMode.ERROR)
+            should_close_socket = True
         except ParserError as e:
             # All errors that should be handled according to the writeup are handled as ParserError
             # objects. All other exceptions are ValueError or some other type. If a ParserError
@@ -1851,13 +1865,16 @@ def main():
         except OSError as e:
             # This can be useful for catching errors related to sockets
             DebugMode.print(debug_mode, f"OSError: {e}", DebugMode.ERROR)
+            should_close_socket = True
         except Exception as e:
             # print(f"An unexpected error occurred: {e}")
             # break
             DebugMode.print(debug_mode, f"General Exception (server_socket): {e}", DebugMode.ERROR)
+            should_close_socket = True
 
         # Attempt to close the server socket just in case
-        close_socket(server_socket)
+        if should_close_socket:
+            close_socket(server_socket)
         smtp_server.reset()
 
 
