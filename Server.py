@@ -1417,7 +1417,7 @@ class SMTPServer:
                 raise ParserError(ParserError.COMMAND_UNRECOGNIZED)
 
             client_domain = self.parser.get_domain_from_helo()
-            if not socket_send_msg(self.connection_socket, f"250 Hello {client_domain} pleased to meet you.", self.debug_mode):
+            if not socket_send_msg(self.connection_socket, f"250 Hello {client_domain} pleased to meet you", self.debug_mode):
                 print('Failed to send 250 Hello message to client. Closing connection.')
                 close_socket(self.connection_socket)
             return self.advance()
@@ -1434,7 +1434,7 @@ class SMTPServer:
 
             # If we made it here, the command was fully parsed successfully
             # Add the "From: <reverse-path>" line to the list of email text lines
-            self.add_text_to_email_body(self.parser.get_from_line_for_email())
+            # self.add_text_to_email_body(self.parser.get_from_line_for_email())
 
             if not socket_send_msg(self.connection_socket, f"250 OK", self.debug_mode):
                 print('Failed to send 250 OK to client. Closing connection.')
@@ -1449,7 +1449,7 @@ class SMTPServer:
 
             # If we made it here, the command was fully parsed successfully
             # Add the "To: <forward-path>" line to the list of email text lines
-            self.add_text_to_email_body(self.parser.get_to_line_for_email())
+            # self.add_text_to_email_body(self.parser.get_to_line_for_email())
 
             # This is not used in HW4, domain is
             # self.to_email_addresses.append(self.parser.get_email_address())
@@ -1559,6 +1559,8 @@ class SMTPServer:
         self.to_email_addresses = []
         self.to_domains = set()
         self.email_text = []
+
+        DebugMode.print(self.debug_mode, "SERVER state machine has been reset.", DebugMode.ERROR)
 
     def advance(self):
         """
@@ -1805,8 +1807,10 @@ def main():
                         # reset your state machine and return to the state of waiting for a valid MAIL FROM
                         # message".
 
+                        # 2026/04/20 - it does NOT say close the connection.
+
                         socket_send_msg(connection_socket, str(e))
-                        close_socket(connection_socket)
+                        # close_socket(connection_socket)
 
                         input_line = ""
                         if smtp_server is not None and smtp_server.parser is not None:
@@ -1825,7 +1829,7 @@ def main():
                         DebugMode.print(debug_mode, f"General Exception (connection_socket): {e}", DebugMode.ERROR)
 
                     # attempt to shut down the connection socket anyway just in case
-                    close_socket(connection_socket)
+                    # close_socket(connection_socket)
                     smtp_server.reset()
 
 
